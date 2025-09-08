@@ -1,0 +1,322 @@
+# Vector.dev Configuration for EDR Agent
+# This configuration collects Windows Event Logs and Sysmon events
+# and forwards them to the EDR server
+
+[api]
+enabled = true
+address = "127.0.0.1:8686"
+
+# Data directory
+data_dir = "/var/lib/vector"
+
+# Windows Event Logs Source
+[sources.windows_events]
+type = "windows_eventlogs"
+channels = [
+    "Security",
+    "System", 
+    "Application",
+    "Microsoft-Windows-Sysmon/Operational",
+    "Microsoft-Windows-PowerShell/Operational",
+    "Microsoft-Windows-WinRM/Operational"
+]
+max_read_bytes = 1048576
+start_at_oldest = false
+
+# File monitoring (for Linux/Unix systems)
+[sources.file_logs]
+type = "file"
+include = [
+    "/var/log/auth.log",
+    "/var/log/syslog",
+    "/var/log/secure",
+    "/var/log/messages"
+]
+ignore_older_secs = 86400
+
+# Docker container logs
+[sources.docker_logs]
+type = "docker_logs"
+auto_partial_merge = true
+
+# Transform: Add agent metadata
+[transforms.add_agent_metadata]
+type = "remap"
+inputs = ["windows_events", "file_logs", "docker_logs"]
+source = '''
+# Add agent identification
+.agent_id = get_hostname() ?? "unknown"
+.agent_version = "1.0.0"
+.collector = "vector"
+.timestamp = now()
+
+# Extract Windows Event Log fields
+if exists(.EventData) {
+    # Process creation events (EventID 4688)
+    if .EventID == 4688 {
+        .event_type = "process"
+        .process_name = .EventData.NewProcessName
+        .command_line = .EventData.CommandLine
+        .parent_pid = .EventData.ParentProcessId
+        .process_id = .EventData.NewProcessId
+        .user_name = .EventData.SubjectUserName
+    }
+    
+    # Logon events (EventID 4624, 4625)
+    if .EventID == 4624 || .EventID == 4625 {
+        .event_type = "logon"
+        .user_name = .EventData.TargetUserName
+        .logon_type = .EventData.LogonType
+        .source_ip = .EventData.IpAddress
+        .workstation = .EventData.WorkstationName
+    }
+    
+    # Network connection events (EventID 5156)
+    if .EventID == 5156 {
+        .event_type = "network"
+        .source_ip = .EventData.SourceAddress
+        .destination_ip = .EventData.DestAddress
+        .source_port = .EventData.SourcePort
+        .destination_port = .EventData.DestPort
+        .protocol = .EventData.Protocol
+    }
+}
+
+# Extract Sysmon fields
+if exists(.EventData) && starts_with(.Channel, "Microsoft-Windows-Sysmon") {
+    # Process creation (EventID 1)
+    if .EventID == 1 {
+        .event_type = "process"
+        .process_name = .EventData.Image
+        .command_line = .EventData.CommandLine
+        .parent_pid = .EventData.ParentProcessId
+        .process_id = .EventData.ProcessId
+        .user_name = .EventData.User
+        .hash = .EventData.Hashes
+    }
+    
+    # Network connection (EventID 3)
+    if .EventID == 3 {
+        .event_type = "network"
+        .process_name = .EventData.Image
+        .source_ip = .EventData.SourceIp
+        .destination_ip = .EventData.DestinationIp
+        .source_port = .EventData.SourcePort
+        .destination_port = .EventData.DestinationPort
+        .protocol = .EventData.Protocol
+    }
+    
+    # File creation (EventID 11)
+    if .EventID == 11 {
+        .event_type = "file"
+        .process_name = .EventData.Image
+        .file_path = .EventData.TargetFilename
+        .creation_time = .EventData.CreationUtcTime
+    }
+    
+    # Registry modification (EventID 13)
+    if .EventID == 13 {
+        .event_type = "registry"
+        .process_name = .EventData.Image
+        .registry_path = .EventData.TargetObject
+        .registry_value = .EventData.Details
+    }
+}
+
+# Parse Linux logs
+if exists(.file) {
+    if contains(.file, "auth.log") || contains(.file, "secure") {
+        .event_type = "authentication"
+        
+        # SSH login attempts
+        if match(.message, r"sshd.*Failed password") {
+            .event_type = "failed_login"
+            .user_name = parse_regex(.message, r"user (?P<user>\w+)").user
+            .source_ip = parse_regex(.message, r"from (?P<ip>\d+\.\d+\.\d+\.\d+)").ip
+        }
+        
+        # Successful logins
+        if match(.message, r"sshd.*Accepted") {
+            .event_type = "successful_login"
+            .user_name = parse_regex(.message, r"for (?P<user>\w+)").user
+            .source_ip = parse_regex(.message, r"from (?P<ip>\d+\.\d+\.\d+\.\d+)").ip
+        }
+    }
+    
+    if contains(.file, "syslog") || contains(.file, "messages") {
+        .event_type = "system"
+    }
+}
+
+# Set severity based on event type and content
+.severity = 1
+if .event_type == "process" && contains(.command_line, "powershell") {
+    .severity = 3
+}
+if .event_type == "failed_login" {
+    .severity = 2
+}
+if contains(.message, "error") || contains(.message, "failed") {
+    .severity = 3
+}
+
+# Clean up sensitive data
+if exists(.EventData.Password) {
+    del(.EventData.Password)
+}
+'''
+
+# Transform: Filter suspicious events
+[transforms.filter_suspicious]
+type = "filter"
+inputs = ["add_agent_metadata"]
+condition = '''
+# Include high-value events
+.event_type == "process" ||
+.event_type == "network" ||
+.event_type == "logon" ||
+.event_type == "file" ||
+.event_type == "registry" ||
+.severity >= 2 ||
+# PowerShell execution
+(exists(.command_line) && contains(.command_line, "powershell")) ||
+# Mimikatz indicators
+(exists(.command_line) && (
+    contains(.command_line, "sekurlsa") ||
+    contains(.command_line, "lsadump") ||
+    contains(.command_line, "privilege::debug")
+)) ||
+# Lateral movement indicators
+(exists(.command_line) && (
+    contains(.command_line, "psexec") ||
+    contains(.command_line, "wmic") ||
+    contains(.command_line, "net use")
+)) ||
+# Suspicious file operations
+(exists(.file_path) && (
+    contains(.file_path, "\\Windows\\Temp\\") ||
+    contains(.file_path, "\\Users\\Public\\") ||
+    ends_with(.file_path, ".exe") ||
+    ends_with(.file_path, ".dll") ||
+    ends_with(.file_path, ".bat") ||
+    ends_with(.file_path, ".ps1")
+)) ||
+# Authentication events
+.EventID == 4624 || .EventID == 4625 || .EventID == 4648 ||
+# Failed logins
+.event_type == "failed_login" ||
+# Critical system events
+.EventID == 4697 || .EventID == 7034 || .EventID == 7035
+'''
+
+# Transform: Add enrichment data
+[transforms.enrich_events]
+type = "remap"
+inputs = ["filter_suspicious"]
+source = '''
+# Add MITRE ATT&CK mappings
+.mitre_tactics = []
+.mitre_techniques = []
+
+if .event_type == "process" {
+    if exists(.command_line) {
+        if contains(.command_line, "powershell") {
+            .mitre_tactics = push(.mitre_tactics, "execution")
+            .mitre_techniques = push(.mitre_techniques, "T1059.001")
+        }
+        
+        if contains(.command_line, "mimikatz") || contains(.command_line, "sekurlsa") {
+            .mitre_tactics = push(.mitre_tactics, "credential-access")
+            .mitre_techniques = push(.mitre_techniques, "T1003")
+        }
+        
+        if contains(.command_line, "psexec") {
+            .mitre_tactics = push(.mitre_tactics, "lateral-movement")
+            .mitre_techniques = push(.mitre_techniques, "T1021.002")
+        }
+    }
+}
+
+if .event_type == "network" {
+    .mitre_tactics = push(.mitre_tactics, "command-and-control")
+    .mitre_techniques = push(.mitre_techniques, "T1071")
+}
+
+if .event_type == "failed_login" {
+    .mitre_tactics = push(.mitre_tactics, "credential-access")
+    .mitre_techniques = push(.mitre_techniques, "T1110")
+}
+
+# Add geolocation for external IPs (simplified)
+if exists(.source_ip) && !starts_with(.source_ip, "10.") && !starts_with(.source_ip, "192.168.") && !starts_with(.source_ip, "172.") {
+    .external_ip = true
+    .severity = 4
+}
+
+# Calculate risk score
+.risk_score = 0
+if .severity >= 3 { .risk_score = .risk_score + 30 }
+if length(.mitre_techniques) > 0 { .risk_score = .risk_score + 20 }
+if exists(.external_ip) && .external_ip { .risk_score = .risk_score + 25 }
+if .event_type == "process" && exists(.command_line) && length(.command_line) > 200 { .risk_score = .risk_score + 15 }
+
+# Format timestamp
+.timestamp = format_timestamp!(.timestamp, format: "%Y-%m-%dT%H:%M:%S.%3fZ")
+'''
+
+# Sink: Send to EDR Server
+[sinks.edr_server]
+type = "http"
+inputs = ["enrich_events"]
+uri = "${EDR_SERVER_URL}/api/v1/events"
+method = "post"
+compression = "gzip"
+
+[sinks.edr_server.encoding]
+codec = "json"
+
+[sinks.edr_server.batch]
+max_bytes = 1048576  # 1MB
+max_events = 1000
+timeout_secs = 30
+
+[sinks.edr_server.request]
+timeout_secs = 60
+retry_attempts = 3
+retry_max_duration_secs = 300
+
+[sinks.edr_server.buffer]
+type = "disk"
+max_size = 268435456  # 256MB
+when_full = "drop_newest"
+
+# Sink: Local file backup (optional)
+[sinks.file_backup]
+type = "file"
+inputs = ["enrich_events"]
+path = "/var/log/vector/edr-events-%Y-%m-%d.log"
+compression = "gzip"
+
+[sinks.file_backup.encoding]
+codec = "json"
+
+# Sink: Stdout for debugging (optional)
+[sinks.console]
+type = "console"
+inputs = ["enrich_events"]
+target = "stdout"
+
+[sinks.console.encoding]
+codec = "json"
+
+# Health check
+[sources.internal_metrics]
+type = "internal_metrics"
+
+[sinks.metrics_stdout]
+type = "console"
+inputs = ["internal_metrics"]
+target = "stdout"
+
+[sinks.metrics_stdout.encoding]
+codec = "json"

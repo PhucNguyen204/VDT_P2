@@ -1,0 +1,70 @@
+title: Suspicious Network Connections
+id: 23456789-2345-2345-2345-234567890abc
+description: Detects suspicious outbound network connections
+author: EDR Security Team
+date: 2024-01-01
+level: medium
+tags:
+  - attack.command_and_control
+  - attack.t1071
+  - attack.exfiltration
+  - attack.t1041
+logsource:
+  category: network_connection
+  product: windows
+detection:
+  selection_suspicious_ports:
+    EventID: 3
+    Initiated: 'true'
+    DestinationPort:
+      - 4444
+      - 1234
+      - 8080
+      - 9999
+      - 31337
+  selection_suspicious_processes:
+    EventID: 3
+    Initiated: 'true'
+    Image|endswith:
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\mshta.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+  selection_non_standard_ports:
+    EventID: 3
+    Initiated: 'true'
+    DestinationPort|gt: 49152
+    Image|endswith:
+      - '\powershell.exe'
+      - '\cmd.exe'
+      - '\certutil.exe'
+  filter_local:
+    DestinationIp|startswith:
+      - '192.168.'
+      - '10.'
+      - '172.16.'
+      - '172.17.'
+      - '172.18.'
+      - '172.19.'
+      - '172.20.'
+      - '172.21.'
+      - '172.22.'
+      - '172.23.'
+      - '172.24.'
+      - '172.25.'
+      - '172.26.'
+      - '172.27.'
+      - '172.28.'
+      - '172.29.'
+      - '172.30.'
+      - '172.31.'
+      - '127.'
+  condition: (selection_suspicious_ports or selection_suspicious_processes or selection_non_standard_ports) and not filter_local
+falsepositives:
+  - Legitimate software updates
+  - Corporate applications using non-standard ports
+  - Development and testing activities
+references:
+  - https://attack.mitre.org/techniques/T1071/
+  - https://attack.mitre.org/techniques/T1041/
