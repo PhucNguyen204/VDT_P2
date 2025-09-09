@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	//import file c
 )
 
 // AdvancedMatcher high-performance matcher với cache, hooks và modifiers

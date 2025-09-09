@@ -124,3 +124,11 @@ func (r *Repository) GetAgent(agentID string) (*models.Agent, error) {
 	err := r.db.Where("id = ?", agentID).First(&agent).Error
 	return &agent, err
 }
+
+// UpdateAgentStatus cập nhật status và last_seen của agent
+func (r *Repository) UpdateAgentStatus(agentID string, status string, lastSeen time.Time) error {
+	return r.db.Model(&models.Agent{}).Where("id = ?", agentID).Updates(map[string]interface{}{
+		"status":    status,
+		"last_seen": lastSeen,
+	}).Error
+}

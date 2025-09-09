@@ -4,10 +4,10 @@ server:
   max_request_size: 10485760 # 10MB
 
 database:
-  host: localhost
+  host: 127.0.0.1
   port: 5432
-  username: edr_user
-  password: edr_password
+  username: test_user
+  password: test123
   database: edr_db
   ssl_mode: disable
 

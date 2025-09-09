@@ -7,6 +7,7 @@ import (
 
 	"edr-server/internal/config"
 	"edr-server/internal/database"
+	"edr-server/internal/models"
 	"edr-server/internal/processor"
 
 	"github.com/gin-gonic/gin"
@@ -70,10 +71,13 @@ func (s *Server) setupRouter() {
 		v1.GET("/alerts/:id", s.getAlert)
 		v1.PUT("/alerts/:id/status", s.updateAlertStatus)
 
-		// Agents
+		// Agents Management
 		v1.GET("/agents", s.getAgents)
 		v1.GET("/agents/:id", s.getAgent)
 		v1.GET("/agents/:id/events", s.getAgentEvents)
+		v1.POST("/agents/register", s.registerAgent)
+		v1.POST("/agents/:id/heartbeat", s.agentHeartbeat)
+		v1.PUT("/agents/:id/status", s.updateAgentStatus)
 
 		// Process Trees
 		v1.GET("/process-trees", s.getProcessTrees)
@@ -413,4 +417,116 @@ func (s *Server) getAlertsByStatus() map[string]int64 {
 func (s *Server) getRecentAlerts() []interface{} {
 	// Implementation lấy recent alerts
 	return []interface{}{}
+}
+
+// ========== AGENT MANAGEMENT METHODS ==========
+
+// registerAgent đăng ký agent mới
+func (s *Server) registerAgent(c *gin.Context) {
+	var req struct {
+		AgentID   string    `json:"agent_id" binding:"required"`
+		Hostname  string    `json:"hostname" binding:"required"`
+		IPAddress string    `json:"ip_address"`
+		OS        string    `json:"os"`
+		Version   string    `json:"version"`
+		LastSeen  time.Time `json:"last_seen"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.logger.WithError(err).Error("❌ Invalid agent registration data")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	// Create or update agent
+	err := s.repository.CreateOrUpdateAgent(&models.Agent{
+		ID:           req.AgentID,
+		Hostname:     req.Hostname,
+		IPAddress:    req.IPAddress,
+		OS:           req.OS,
+		AgentVersion: req.Version,
+		Status:       "active",
+		LastSeen:     time.Now(),
+	})
+
+	if err != nil {
+		s.logger.WithError(err).Error("❌ Failed to register agent")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register agent"})
+		return
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"agent_id": req.AgentID,
+		"hostname": req.Hostname,
+	}).Info("✅ Agent registered successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Agent registered successfully",
+		"agent_id": req.AgentID,
+		"status":   "active",
+	})
+}
+
+// agentHeartbeat xử lý heartbeat từ agent
+func (s *Server) agentHeartbeat(c *gin.Context) {
+	agentID := c.Param("id")
+
+	var req struct {
+		Status   string                 `json:"status"`
+		LastSeen time.Time              `json:"last_seen"`
+		Metrics  map[string]interface{} `json:"metrics,omitempty"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid heartbeat data"})
+		return
+	}
+
+	// Update agent status and last seen
+	err := s.repository.UpdateAgentStatus(agentID, req.Status, time.Now())
+	if err != nil {
+		s.logger.WithError(err).WithField("agent_id", agentID).Error("❌ Failed to update agent heartbeat")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent status"})
+		return
+	}
+
+	s.logger.WithField("agent_id", agentID).Debug("💓 Agent heartbeat received")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Heartbeat received",
+		"agent_id":  agentID,
+		"timestamp": time.Now(),
+	})
+}
+
+// updateAgentStatus cập nhật trạng thái agent
+func (s *Server) updateAgentStatus(c *gin.Context) {
+	agentID := c.Param("id")
+
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid status data"})
+		return
+	}
+
+	err := s.repository.UpdateAgentStatus(agentID, req.Status, time.Now())
+	if err != nil {
+		s.logger.WithError(err).WithField("agent_id", agentID).Error("❌ Failed to update agent status")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent status"})
+		return
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"agent_id": agentID,
+		"status":   req.Status,
+	}).Info("🔄 Agent status updated")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Agent status updated successfully",
+		"agent_id": agentID,
+		"status":   req.Status,
+	})
 }

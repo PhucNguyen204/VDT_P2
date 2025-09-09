@@ -91,22 +91,37 @@ services:
     depends_on:
       - postgres
 
-  # Vector.dev (Example agent configuration)
-  vector-agent:
-    image: timberio/vector:latest-alpine
-    container_name: edr-vector-agent
+  # EDR Agent with Vector.dev
+  agent:
+    build: ./agent
+    container_name: edr-agent
+    hostname: edr-agent-001
     volumes:
-      - ./vector/vector.toml:/etc/vector/vector.toml:ro
-      - /var/log:/var/log:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs:/var/log/edr
     environment:
-      - VECTOR_CONFIG=/etc/vector/vector.toml
+      - AGENT_ID=agent-001
+      - AGENT_VERSION=1.0.0
       - EDR_SERVER_URL=http://edr-server:8080
     networks:
       - edr-network
     restart: unless-stopped
     depends_on:
       - edr-server
+    ports:
+      - "2222:22"  # SSH for attack simulation
+
+  # Attack Simulation Container  
+  attacker:
+    build: ./attacker
+    container_name: edr-attacker
+    environment:
+      - TARGET_HOST=agent
+      - TARGET_PORT=22
+    networks:
+      - edr-network
+    depends_on:
+      - agent
+    restart: "no"  # Run once
 
   # Grafana (Optional - for advanced dashboards)
   grafana:

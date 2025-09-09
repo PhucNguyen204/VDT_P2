@@ -18,4 +18,4 @@ RUN chmod +x /usr/local/bin/attack_scripts.sh
 WORKDIR /root
 
 # Default command - run attack scripts
-CMD ["/usr/local/bin/attack_scripts.sh"]
+CMD ["/bin/bash", "/usr/local/bin/attack_scripts.sh"]

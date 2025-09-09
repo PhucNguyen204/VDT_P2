@@ -132,10 +132,46 @@ encoding.codec = "json"
 [sinks.edr_engine]
 type = "http"
 inputs = ["parse_http_logs", "ssh_syslog_parsed"]
-uri = "http://edr-server:8080/api/v2/events"
+uri = "http://edr-server:8080/api/v1/events"
 method = "post"
 encoding.codec = "json"
 headers.Content-Type = "application/json"
+
+# Agent Registration & Heartbeat
+[sinks.agent_registration]
+type = "http"
+inputs = ["demo_logs"]
+uri = "http://edr-server:8080/api/v1/agents/register"
+method = "post"
+encoding.codec = "json"
+headers.Content-Type = "application/json"
+batch.max_events = 1
+batch.timeout_secs = 60
+
+[transforms.agent_heartbeat]
+type = "remap"
+inputs = ["demo_logs"]
+source = '''
+. = {
+  "agent_id": "edr-agent-001",
+  "hostname": get_hostname!(),
+  "ip_address": "192.168.1.100",
+  "os": "linux",
+  "version": "1.0.0",
+  "status": "active",
+  "last_seen": now()
+}
+'''
+
+[sinks.agent_heartbeat_sink]
+type = "http"
+inputs = ["agent_heartbeat"]
+uri = "http://edr-server:8080/api/v1/agents/edr-agent-001/heartbeat"
+method = "post"
+encoding.codec = "json"
+headers.Content-Type = "application/json"
+batch.max_events = 1
+batch.timeout_secs = 30
 
 # ---- API ----
 [api]
