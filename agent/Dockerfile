@@ -30,14 +30,19 @@ RUN echo "auth.* @@127.0.0.1:5514" >> /etc/rsyslog.d/90-vector.conf
 
 # === Vector config (syslog source + console sink) ===
 RUN mkdir -p /etc/vector
+COPY vector.yaml /etc/vector/vector.yaml
 COPY vector.toml /etc/vector/vector.toml
 
 EXPOSE 22 514/udp
 
-# === Setup systemd alternatives và entrypoint script ===
+# === Setup entrypoint script ===
 RUN mkdir -p /app
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# === Entrypoint: chạy nhiều service với manual start ===
-CMD ["/app/entrypoint.sh"]
+# Fix line endings và make sure script is executable
+RUN sed -i 's/\r$//' /app/entrypoint.sh
+RUN chmod 755 /app/entrypoint.sh
+
+# === Entrypoint: use bash explicitly ===
+CMD ["/bin/bash", "/app/entrypoint.sh"]

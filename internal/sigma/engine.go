@@ -96,7 +96,63 @@ func NewSigmaEngine(config *EngineConfig, logger *logrus.Logger) *SigmaEngine {
 	return engine
 }
 
-// FromRules tạo engine từ YAML rules (giống Rust version)
+// SigmaEngineBuilder builder pattern cho cawalch/sigma-engine compatibility
+type SigmaEngineBuilder struct {
+	config *EngineConfig
+	logger *logrus.Logger
+}
+
+// Builder tạo builder mới theo cawalch pattern
+func Builder() *SigmaEngineBuilder {
+	return &SigmaEngineBuilder{
+		config: DefaultEngineConfig(),
+	}
+}
+
+// WithConfig sets engine configuration
+func (b *SigmaEngineBuilder) WithConfig(config *EngineConfig) *SigmaEngineBuilder {
+	b.config = config
+	return b
+}
+
+// WithLogger sets logger
+func (b *SigmaEngineBuilder) WithLogger(logger *logrus.Logger) *SigmaEngineBuilder {
+	b.logger = logger
+	return b
+}
+
+// Build creates engine and compiles rules theo cawalch pattern
+func (b *SigmaEngineBuilder) Build(rulesYAML []string) (*SigmaEngine, error) {
+	engine := NewSigmaEngine(b.config, b.logger)
+	err := engine.FromRules(rulesYAML)
+	if err != nil {
+		return nil, err
+	}
+	return engine, nil
+}
+
+// FromRules static constructor theo cawalch/sigma-engine API
+func FromRules(rulesYAML []string) (*SigmaEngine, error) {
+	engine := NewSigmaEngine(nil, nil)
+	err := engine.FromRules(rulesYAML)
+	if err != nil {
+		return nil, err
+	}
+	return engine, nil
+}
+
+// FromRulesWithCompiler static constructor với custom compiler
+func FromRulesWithCompiler(rulesYAML []string, compiler *Compiler, config *EngineConfig) (*SigmaEngine, error) {
+	engine := NewSigmaEngine(config, nil)
+	engine.compiler = compiler
+	err := engine.FromRules(rulesYAML)
+	if err != nil {
+		return nil, err
+	}
+	return engine, nil
+}
+
+// FromRules instance method - tạo engine từ YAML rules (giống Rust version)
 func (e *SigmaEngine) FromRules(rulesYAML []string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()

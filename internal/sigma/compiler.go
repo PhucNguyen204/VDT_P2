@@ -184,16 +184,40 @@ func (c *Compiler) compileDetection(detection map[string]interface{}) (*DAGNode,
 	return rootNode, allPrimitives, allLiterals, nil
 }
 
-// compileSelection compile một selection thành DAG node
+// compileSelection compile một selection thành DAG node - Enhanced to handle multiple SIGMA formats
 func (c *Compiler) compileSelection(name string, selection interface{}) (*DAGNode, []*Primitive, []string, error) {
-	selectionMap, ok := selection.(map[string]interface{})
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("selection %s must be map", name)
-	}
+	switch sel := selection.(type) {
+	case map[string]interface{}:
+		// Standard map format: selection: { EventID: 4624, LogonType: 2 }
+		return c.compileMapSelection(name, sel)
 
+	case []interface{}:
+		// List format: selection: [ value1, value2 ] - treat as OR condition
+		return c.compileListSelection(name, sel)
+
+	case string:
+		// String format: selection: "single_value" - treat as keyword match
+		return c.compileStringSelection(name, sel)
+
+	case nil:
+		// Empty selection - skip silently
+		return nil, nil, nil, fmt.Errorf("empty selection %s", name)
+
+	default:
+		// Unsupported format - skip with warning instead of failing
+		return nil, nil, nil, fmt.Errorf("unsupported selection format for %s: %T (skipping)", name, selection)
+	}
+}
+
+// compileMapSelection handles map-based selections (most common format)
+func (c *Compiler) compileMapSelection(name string, selectionMap map[string]interface{}) (*DAGNode, []*Primitive, []string, error) {
 	var rootNode *DAGNode
 	primitives := make([]*Primitive, 0)
 	literals := make([]string, 0)
+
+	if len(selectionMap) == 0 {
+		return nil, nil, nil, fmt.Errorf("empty selection map for %s", name)
+	}
 
 	if len(selectionMap) == 1 {
 		// Single field selection
@@ -219,7 +243,8 @@ func (c *Compiler) compileSelection(name string, selection interface{}) (*DAGNod
 		for field, value := range selectionMap {
 			primitive, err := c.compilePrimitive(field, value)
 			if err != nil {
-				return nil, nil, nil, err
+				// Skip invalid primitives instead of failing entire rule
+				continue
 			}
 
 			primitives = append(primitives, primitive)
@@ -231,6 +256,10 @@ func (c *Compiler) compileSelection(name string, selection interface{}) (*DAGNod
 				Primitive: primitive,
 			}
 			children = append(children, childNode)
+		}
+
+		if len(children) == 0 {
+			return nil, nil, nil, fmt.Errorf("no valid primitives in selection %s", name)
 		}
 
 		rootNode = &DAGNode{
@@ -246,6 +275,80 @@ func (c *Compiler) compileSelection(name string, selection interface{}) (*DAGNod
 	}
 
 	return rootNode, primitives, literals, nil
+}
+
+// compileListSelection handles list-based selections (OR conditions)
+func (c *Compiler) compileListSelection(name string, selectionList []interface{}) (*DAGNode, []*Primitive, []string, error) {
+	if len(selectionList) == 0 {
+		return nil, nil, nil, fmt.Errorf("empty selection list for %s", name)
+	}
+
+	var rootNode *DAGNode
+	primitives := make([]*Primitive, 0)
+	literals := make([]string, 0)
+	children := make([]*DAGNode, 0)
+
+	// Treat list as OR condition over multiple values
+	for i, item := range selectionList {
+		fieldName := fmt.Sprintf("%s_item_%d", name, i)
+
+		primitive, err := c.compilePrimitive(fieldName, item)
+		if err != nil {
+			continue // Skip invalid items
+		}
+
+		primitives = append(primitives, primitive)
+		literals = append(literals, primitive.Literals...)
+
+		childNode := &DAGNode{
+			ID:        generateNodeID(),
+			Type:      NodePrimitive,
+			Primitive: primitive,
+		}
+		children = append(children, childNode)
+	}
+
+	if len(children) == 0 {
+		return nil, nil, nil, fmt.Errorf("no valid items in selection list %s", name)
+	}
+
+	if len(children) == 1 {
+		rootNode = children[0]
+	} else {
+		rootNode = &DAGNode{
+			ID:       generateNodeID(),
+			Type:     NodeOr,
+			Children: children,
+		}
+
+		// Set parent references
+		for _, child := range children {
+			child.Parent = rootNode
+		}
+	}
+
+	return rootNode, primitives, literals, nil
+}
+
+// compileStringSelection handles string-based selections (keyword matching)
+func (c *Compiler) compileStringSelection(name string, selectionString string) (*DAGNode, []*Primitive, []string, error) {
+	if len(strings.TrimSpace(selectionString)) == 0 {
+		return nil, nil, nil, fmt.Errorf("empty selection string for %s", name)
+	}
+
+	// Treat string as a keyword/contains match
+	primitive, err := c.compilePrimitive("keywords", selectionString)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	rootNode := &DAGNode{
+		ID:        generateNodeID(),
+		Type:      NodePrimitive,
+		Primitive: primitive,
+	}
+
+	return rootNode, []*Primitive{primitive}, primitive.Literals, nil
 }
 
 // compilePrimitive compile field-value pair thành Primitive

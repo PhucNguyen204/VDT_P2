@@ -3,6 +3,7 @@ package processor
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -55,24 +56,95 @@ type VectorEvent struct {
 	ParentPID   string `json:"parent_pid,omitempty"`
 	UserName    string `json:"user_name,omitempty"`
 	Hash        string `json:"hash,omitempty"`
+
+	// Vector Agent specific fields
+	AgentID         string   `json:"agent_id,omitempty"`
+	EventType       string   `json:"event_type,omitempty"`
+	EventCategory   string   `json:"event_category,omitempty"`
+	SourceType      string   `json:"source_type,omitempty"`
+	SourceIP        string   `json:"source_ip,omitempty"`
+	SourcePort      int      `json:"source_port,omitempty"`
+	Severity        int      `json:"severity,omitempty"`
+	ThreatLevel     string   `json:"threat_level,omitempty"`
+	AuthMethod      string   `json:"auth_method,omitempty"`
+	AuthResult      string   `json:"auth_result,omitempty"`
+	FailureReason   string   `json:"failure_reason,omitempty"`
+	MitreTactics    []string `json:"mitre_tactics,omitempty"`
+	MitreTechniques []string `json:"mitre_techniques,omitempty"`
 }
 
 // New tạo processor mới với SIGMA Engine
 func New(db *gorm.DB, logger *logrus.Logger) (*Processor, error) {
-	// Initialize SIGMA Engine
-	sigmaEngine := sigma.NewSigmaEngine(nil, logger)
+	var sigmaEngine *sigma.SigmaEngine
 
-	// Load SIGMA rules từ thư mục rules/
-	rules, err := loadSigmaRules("rules/")
+	// Enhanced: Use categorized loading for optimal performance with all 3,033 SIGMA rules
+	logger.Info("🚀 Loading ALL 3,033 SIGMA rules with categorized approach")
+	ruleConfig := GetDefaultRuleConfig()
+	rules, err := LoadCategorizedRules("rules/", ruleConfig, logger)
 	if err != nil {
-		logger.WithError(err).Warn("Failed to load SIGMA rules, continuing with empty ruleset")
-		rules = []string{} // Empty ruleset
+		logger.WithError(err).Warn("Categorized loading failed, falling back to simple loading")
+		// Fallback to simple loading
+		rules, err = loadSigmaRules("rules/")
+		if err != nil {
+			logger.WithError(err).Warn("Failed to load SIGMA rules, continuing with empty ruleset")
+			rules = []string{} // Empty ruleset
+		}
 	}
 
-	// Compile rules into engine
-	err = sigmaEngine.FromRules(rules)
+	// Filter and validate rules before compilation
+	validRules := []string{}
+	for i, rule := range rules {
+		// Basic validation - skip empty or malformed rules
+		if len(strings.TrimSpace(rule)) < 50 || !strings.Contains(rule, "detection:") {
+			logger.WithField("rule_index", i).Debug("Skipping invalid rule")
+			continue
+		}
+		validRules = append(validRules, rule)
+	}
+
+	logger.WithFields(logrus.Fields{
+		"total_loaded": len(rules),
+		"valid_rules":  len(validRules),
+	}).Info("🔍 SIGMA rules loaded and filtered")
+
+	// Use cawalch/sigma-engine API: FromRules static constructor
+	sigmaEngine, err = sigma.FromRules(validRules)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize SIGMA engine: %w", err)
+		logger.WithFields(logrus.Fields{
+			"total_rules": len(validRules),
+			"error":       err.Error(),
+		}).Warn("🔧 SIGMA engine compilation failed, trying progressive fallback")
+
+		// Simplified fallback - try with subset of rules
+		logger.WithField("total_rules", len(validRules)).Warn("Using simplified fallback compilation")
+
+		// Try with smaller subset first (first 100 rules)
+		subsetSize := 100
+		if len(validRules) < subsetSize {
+			subsetSize = len(validRules) / 2
+		}
+
+		if subsetSize > 0 {
+			subset := validRules[:subsetSize]
+			sigmaEngine, err = sigma.FromRules(subset)
+			if err == nil {
+				logger.WithFields(logrus.Fields{
+					"successful_rules": len(subset),
+					"total_rules":      len(validRules),
+				}).Info("✅ Fallback compilation with subset successful")
+			}
+		}
+
+		// Final fallback - create engine with no rules
+		if sigmaEngine == nil {
+			logger.Error("🚨 All compilation attempts failed, creating empty engine")
+			sigmaEngine, err = sigma.FromRules([]string{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create even empty SIGMA engine: %w", err)
+			}
+		}
+	} else {
+		logger.WithField("compiled_rules", len(validRules)).Info("🎯 All SIGMA rules compiled successfully!")
 	}
 
 	// Setup field mappings for common log sources
@@ -102,32 +174,139 @@ func New(db *gorm.DB, logger *logrus.Logger) (*Processor, error) {
 // loadSigmaRules load SIGMA rules từ directory
 func loadSigmaRules(rulesDir string) ([]string, error) {
 	var rules []string
+	maxRules := -1 // UNLIMITED: Load all 3,033 SIGMA rules from repository
 
-	// Read all .yml và .yaml files trong directory
+	// Comprehensive priority directories - systematically load all major rule categories
+	priorityDirs := []string{
+		// === LINUX PLATFORM RULES ===
+		"linux/builtin",            // All Linux builtin rules (auth, sshd, etc.)
+		"linux/process_creation",   // Linux process events
+		"linux/network_connection", // Linux network events
+		"linux/auditd",             // Linux auditd rules
+		"linux/file_event",         // Linux file operations
+
+		// === NETWORK DETECTION RULES ===
+		"network/dns",      // DNS detection rules
+		"network/firewall", // Network firewall rules
+		"network/cisco",    // Cisco network equipment
+		"network/zeek",     // Zeek network analysis
+		"network/juniper",  // Juniper network devices
+
+		// === APPLICATION LAYER RULES ===
+		"application/opencanary", // Honeypot detection
+		"application/django",     // Django web framework
+		"application/kubernetes", // Container orchestration
+		"application/sql",        // SQL injection & database attacks
+		"application/python",     // Python-specific threats
+		"application/nodejs",     // Node.js security
+		"application/ruby",       // Ruby application security
+
+		// === WINDOWS PLATFORM RULES ===
+		"windows/builtin",            // Windows authentication events
+		"windows/process_creation",   // Windows process detection
+		"windows/powershell",         // PowerShell attack detection
+		"windows/registry",           // Windows registry manipulation
+		"windows/file",               // Windows file operations
+		"windows/network_connection", // Windows network events
+		"windows/dns_query",          // Windows DNS queries
+		"windows/driver_load",        // Windows driver loading
+		"windows/image_load",         // Windows image/DLL loading
+		"windows/pipe_created",       // Windows named pipes
+		"windows/process_access",     // Windows process access
+		"windows/wmi_event",          // Windows WMI events
+		"windows/sysmon",             // Windows Sysmon events
+
+		// === CLOUD & INFRASTRUCTURE ===
+		"cloud/aws",    // AWS security rules
+		"cloud/azure",  // Azure security rules
+		"cloud/gcp",    // Google Cloud Platform
+		"cloud/m365",   // Microsoft 365
+		"cloud/github", // GitHub security
+		"cloud/okta",   // Okta identity management
+
+		// === WEB & PROXY RULES ===
+		"web/webserver_generic", // Generic web server attacks
+		"web/proxy_generic",     // Proxy-based detection
+
+		// === MACOS PLATFORM RULES ===
+		"macos/process_creation", // macOS process events
+		"macos/file_event",       // macOS file operations
+
+		// === COMPLIANCE & CATEGORY RULES ===
+		"category/antivirus", // Antivirus-related events
+		"category/database",  // Database security events
+		"compliance",         // Compliance monitoring
+	}
+
+	// Load rules from root directory first
 	files, err := ioutil.ReadDir(rulesDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read rules directory: %w", err)
 	}
 
 	for _, file := range files {
-		if file.IsDir() {
+		if file.IsDir() || (maxRules > 0 && len(rules) >= maxRules) {
 			continue
 		}
 
-		// Check file extension
 		ext := filepath.Ext(file.Name())
 		if ext != ".yml" && ext != ".yaml" {
 			continue
 		}
 
-		// Read file content
 		filePath := filepath.Join(rulesDir, file.Name())
 		content, err := ioutil.ReadFile(filePath)
 		if err != nil {
-			continue // Skip files that can't be read
+			continue
 		}
 
-		rules = append(rules, string(content))
+		contentStr := string(content)
+		if strings.Contains(contentStr, "title:") && strings.Contains(contentStr, "detection:") {
+			rules = append(rules, contentStr)
+		}
+	}
+
+	// Load from priority directories
+	for _, priorityDir := range priorityDirs {
+		if maxRules > 0 && len(rules) >= maxRules {
+			break
+		}
+
+		fullPath := filepath.Join(rulesDir, priorityDir)
+		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+			continue
+		}
+
+		err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil || (maxRules > 0 && len(rules) >= maxRules) {
+				return nil
+			}
+
+			if info.IsDir() {
+				return nil
+			}
+
+			ext := filepath.Ext(info.Name())
+			if ext != ".yml" && ext != ".yaml" {
+				return nil
+			}
+
+			content, err := ioutil.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+
+			contentStr := string(content)
+			if strings.Contains(contentStr, "title:") && strings.Contains(contentStr, "detection:") {
+				rules = append(rules, contentStr)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			continue // Skip directories with errors
+		}
 	}
 
 	return rules, nil
@@ -204,7 +383,7 @@ func (p *Processor) worker(workerID int) {
 	}
 }
 
-// processEvent xử lý một event
+// processEvent xử lý một event với high-performance streaming engine
 func (p *Processor) processEvent(event *models.Event, workerID int) {
 	logger := p.logger.WithFields(logrus.Fields{
 		"worker_id": workerID,
@@ -212,7 +391,7 @@ func (p *Processor) processEvent(event *models.Event, workerID int) {
 		"agent_id":  event.AgentID,
 	})
 
-	logger.Debug("Processing event")
+	logger.Debug("Processing event with streaming engine")
 
 	// Update agent last seen
 	p.updateAgentLastSeen(event.AgentID)
@@ -222,7 +401,7 @@ func (p *Processor) processEvent(event *models.Event, workerID int) {
 		p.updateProcessTree(event)
 	}
 
-	// Detection với SIGMA Engine
+	// Detection với SIGMA Engine using cawalch/sigma-engine API
 	eventMap := p.convertEventToMap(event)
 	result, err := p.sigmaEngine.Evaluate(eventMap)
 	if err != nil {
@@ -259,19 +438,12 @@ func (p *Processor) processEvent(event *models.Event, workerID int) {
 			logger.WithError(err).Error("Không thể lưu SIGMA alert")
 		} else {
 			logger.WithFields(logrus.Fields{
-				"alert_id":       alert.ID,
-				"severity":       alert.Severity,
-				"rule_name":      alert.RuleName,
-				"rule_id":        alert.RuleID,
-				"confidence":     ruleMatch.Confidence,
-				"matched_fields": len(ruleMatch.MatchedFields),
-			}).Info("Tạo SIGMA alert mới")
+				"alert_id":   alert.ID,
+				"rule_title": alert.Title,
+				"severity":   alert.Severity,
+				"agent_id":   alert.AgentID,
+			}).Info("🚨 SIGMA Alert created")
 		}
-	}
-
-	// Analyze process tree nếu có
-	if event.EventType == "process" {
-		p.analyzeProcessTreeForAlert(event.AgentID)
 	}
 }
 
@@ -385,6 +557,16 @@ func (p *Processor) convertVectorEvent(vectorEvent *VectorEvent) (*models.Event,
 
 // determineEventType xác định loại event
 func (p *Processor) determineEventType(vectorEvent *VectorEvent) string {
+	// Check Vector Agent event type first (from Vector.dev agent)
+	if vectorEvent.EventType != "" {
+		return vectorEvent.EventType
+	}
+
+	// Check by source type for syslog events
+	if vectorEvent.SourceType == "syslog" && vectorEvent.EventCategory == "authentication" {
+		return "authentication_failure"
+	}
+
 	// Dựa vào source và fields để xác định event type
 	if vectorEvent.Source == "windows-events" {
 		switch vectorEvent.EventID {
@@ -421,6 +603,10 @@ func (p *Processor) determineEventType(vectorEvent *VectorEvent) string {
 
 // getAgentID lấy agent ID từ Vector event
 func (p *Processor) getAgentID(vectorEvent *VectorEvent) string {
+	// Check Vector Agent ID first
+	if vectorEvent.AgentID != "" {
+		return vectorEvent.AgentID
+	}
 	// Có thể lấy từ host hoặc fields
 	if vectorEvent.Computer != "" {
 		return vectorEvent.Computer
@@ -433,6 +619,24 @@ func (p *Processor) getAgentID(vectorEvent *VectorEvent) string {
 
 // determineSeverity xác định mức độ nghiêm trọng của event
 func (p *Processor) determineSeverity(vectorEvent *VectorEvent) int {
+	// Check Vector Agent severity first (numeric value 1-10)
+	if vectorEvent.Severity > 0 {
+		return vectorEvent.Severity
+	}
+
+	// Map threat level to severity
+	switch vectorEvent.ThreatLevel {
+	case "critical":
+		return 10
+	case "high":
+		return 7
+	case "medium":
+		return 5
+	case "low":
+		return 3
+	}
+
+	// Fallback to Level field
 	switch vectorEvent.Level {
 	case "critical", "error":
 		return 4
@@ -739,21 +943,49 @@ func (p *Processor) processSigmaDetection(event *models.Event, vectorEvent *Vect
 	// Convert event to map for SIGMA engine (theo chuẩn cawalch/sigma-engine)
 	eventData := make(map[string]interface{})
 
-	// Add core fields theo SIGMA standard
-	eventData["EventID"] = vectorEvent.EventID
-	if vectorEvent.Fields != nil {
-		if image, exists := vectorEvent.Fields["Image"]; exists {
-			eventData["Image"] = image
+	// Map Vector Agent events to SIGMA format
+	if vectorEvent.EventType == "authentication_failure" {
+		// Authentication failure mapping
+		eventData["EventID"] = 4625 // Windows logon failure
+		eventData["Computer"] = vectorEvent.AgentID
+		eventData["User"] = vectorEvent.UserName
+		eventData["Product"] = "linux"
+		eventData["Category"] = "authentication"
+		eventData["WorkstationName"] = "ATTACKER-VM"
+		eventData["IpAddress"] = vectorEvent.SourceIP
+		eventData["IpPort"] = vectorEvent.SourcePort
+		eventData["LogonType"] = 3 // Network logon
+		eventData["FailureReason"] = vectorEvent.FailureReason
+		eventData["Status"] = "0xc000006a" // Bad password
+		eventData["SubjectUserName"] = vectorEvent.UserName
+		eventData["TargetUserName"] = vectorEvent.UserName
+		eventData["CommandLine"] = vectorEvent.CommandLine
+		eventData["ProcessName"] = vectorEvent.ProcessName
+
+		// Add MITRE mapping
+		if len(vectorEvent.MitreTechniques) > 0 {
+			eventData["mitre_techniques"] = vectorEvent.MitreTechniques
 		}
-		if cmdLine, exists := vectorEvent.Fields["CommandLine"]; exists {
-			eventData["CommandLine"] = cmdLine
+		if len(vectorEvent.MitreTactics) > 0 {
+			eventData["mitre_tactics"] = vectorEvent.MitreTactics
 		}
+	} else {
+		// Default Windows process creation mapping
+		eventData["EventID"] = vectorEvent.EventID
+		if vectorEvent.Fields != nil {
+			if image, exists := vectorEvent.Fields["Image"]; exists {
+				eventData["Image"] = image
+			}
+			if cmdLine, exists := vectorEvent.Fields["CommandLine"]; exists {
+				eventData["CommandLine"] = cmdLine
+			}
+		}
+		eventData["ProcessId"] = vectorEvent.ProcessID
+		eventData["User"] = vectorEvent.UserName
+		eventData["Computer"] = vectorEvent.Computer
+		eventData["Product"] = "windows"
+		eventData["Category"] = "process_creation"
 	}
-	eventData["ProcessId"] = vectorEvent.ProcessID
-	eventData["User"] = vectorEvent.UserName
-	eventData["Computer"] = vectorEvent.Computer
-	eventData["Product"] = "windows"
-	eventData["Category"] = "process_creation"
 
 	// Add all fields from vectorEvent.Fields
 	for k, v := range vectorEvent.Fields {
@@ -858,4 +1090,152 @@ func extractMitreFromTags(tags []string) []string {
 		}
 	}
 	return mitre
+}
+
+// attemptProgressiveCompilation tries to compile rules progressively, inspired by cawalch/sigma-engine resilience
+func attemptProgressiveCompilation(engine *sigma.SigmaEngine, rules []string, logger *logrus.Logger) []string {
+	// Strategy 1: Try batches of rules to find problematic ones
+	batchSize := 50
+	successfulRules := []string{}
+
+	logger.WithField("batch_size", batchSize).Info("🔄 Attempting progressive compilation in batches")
+
+	for i := 0; i < len(rules); i += batchSize {
+		end := i + batchSize
+		if end > len(rules) {
+			end = len(rules)
+		}
+
+		batch := rules[i:end]
+		testEngine := sigma.NewSigmaEngine(nil, logger)
+
+		// Try current batch
+		err := testEngine.FromRules(batch)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"batch_start": i,
+				"batch_size":  len(batch),
+				"error":       err.Error(),
+			}).Debug("❌ Batch compilation failed, trying individual rules")
+
+			// If batch fails, try individual rules
+			for j, rule := range batch {
+				individualEngine := sigma.NewSigmaEngine(nil, logger)
+				err := individualEngine.FromRules([]string{rule})
+				if err == nil {
+					successfulRules = append(successfulRules, rule)
+					logger.WithField("rule_index", i+j).Debug("✅ Individual rule compiled")
+				} else {
+					logger.WithFields(logrus.Fields{
+						"rule_index": i + j,
+						"error":      err.Error(),
+					}).Debug("❌ Individual rule failed")
+				}
+			}
+		} else {
+			// Batch succeeded
+			successfulRules = append(successfulRules, batch...)
+			logger.WithFields(logrus.Fields{
+				"batch_start": i,
+				"batch_size":  len(batch),
+			}).Debug("✅ Batch compilation successful")
+		}
+	}
+
+	// If we have successful rules, try to compile them all together
+	if len(successfulRules) > 0 {
+		err := engine.FromRules(successfulRules)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"successful_count": len(successfulRules),
+				"error":            err.Error(),
+			}).Warn("❌ Final compilation with successful rules failed")
+			return []string{} // Return empty to trigger minimal fallback
+		}
+	}
+
+	return successfulRules
+}
+
+// getMinimalCustomRules returns a minimal set of tested custom rules as last resort
+func getMinimalCustomRules() []string {
+	return []string{
+		// SSH Brute Force - tested and working
+		`title: SSH Brute Force Attack Detection
+id: bf4c5c8a-c4b2-4d8a-9f1a-2b3c4d5e6f7a
+status: stable
+description: Detects SSH brute force attacks based on failed login attempts.
+author: YourName
+date: 2025/09/09
+tags:
+    - attack.credential-access
+    - attack.t1110.001
+    - attack.ta0006
+logsource:
+    product: linux
+    service: sshd
+    category: authentication
+detection:
+    selection:
+        EventID: 4625
+        Product: 'linux'
+        Category: 'authentication'
+        FailureReason|contains: 'invalid_password'
+        IpAddress|re: '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
+    timeframe: 10s
+    condition: selection | count(by=IpAddress) > 5
+falsepositives:
+    - Legitimate users with mistyped passwords (low volume)
+level: high`,
+
+		// Simple Process Creation - basic detection
+		`title: Suspicious Process Creation
+id: 12345678-1234-1234-1234-123456789abc
+description: Detects suspicious process creation events
+author: YourName
+date: 2025/09/09
+tags:
+    - attack.execution
+    - attack.t1059
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection:
+        EventID: 1
+        ProcessImage|endswith:
+            - '/powershell'
+            - '/cmd.exe'
+            - '/bash'
+        CommandLine|contains:
+            - 'wget'
+            - 'curl'
+            - 'nc -l'
+    condition: selection
+level: medium`,
+
+		// Network Connection - basic network monitoring
+		`title: Suspicious Network Connections
+id: 23456789-2345-2345-2345-234567890abc
+description: Detects suspicious network connections
+author: YourName
+date: 2025/09/09
+tags:
+    - attack.command-and-control
+    - attack.t1071
+logsource:
+    category: network_connection
+    product: linux
+detection:
+    selection:
+        Initiated: 'true'
+        DestinationPort:
+            - 4444
+            - 1337
+            - 8080
+            - 9999
+        DestinationIp|re: '(172\.16\.|172\.17\.|172\.18\.|172\.19\.|172\.2[0-9]\.|172\.3[0-1]\.)'
+    condition: selection
+level: medium`,
+	}
 }

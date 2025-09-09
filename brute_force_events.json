@@ -1,0 +1,183 @@
+[
+  {
+    "timestamp": "2025-09-09T01:15:30Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for root from 192.168.1.100 port 45234 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "root",
+      "TargetUserName": "root",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45234",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:32Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for root from 192.168.1.100 port 45234 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "root",
+      "TargetUserName": "root",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45234",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:34Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for admin from 192.168.1.100 port 45235 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "admin",
+      "TargetUserName": "admin",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45235",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:36Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for root from 192.168.1.100 port 45234 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "root",
+      "TargetUserName": "root",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45234",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:38Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for root from 192.168.1.100 port 45234 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "root",
+      "TargetUserName": "root",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45234",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:40Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Multiple authentication failures for root from 192.168.1.100",
+    "fields": {
+      "EventID": "4648",
+      "LogonType": "10",
+      "SubjectUserName": "root",
+      "TargetUserName": "root",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "22",
+      "Protocol": "ssh",
+      "FailureReason": "multiple_failures",
+      "AuthenticationPackageName": "ssh",
+      "FailureCount": "5"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:42Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for administrator from 192.168.1.100 port 45236 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "administrator",
+      "TargetUserName": "administrator",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45236",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:44Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for user from 192.168.1.100 port 45237 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "user",
+      "TargetUserName": "user",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45237",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:46Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for test from 192.168.1.100 port 45238 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "test",
+      "TargetUserName": "test",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45238",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  },
+  {
+    "timestamp": "2025-09-09T01:15:48Z",
+    "agent_id": "agent-001",
+    "source": "auth.log",
+    "message": "Failed password for guest from 192.168.1.100 port 45239 ssh2",
+    "fields": {
+      "EventID": "4625",
+      "LogonType": "10",
+      "SubjectUserName": "guest",
+      "TargetUserName": "guest",
+      "ProcessName": "sshd",
+      "IpAddress": "192.168.1.100",
+      "Port": "45239",
+      "Protocol": "ssh",
+      "FailureReason": "invalid_password",
+      "AuthenticationPackageName": "ssh"
+    }
+  }
+]

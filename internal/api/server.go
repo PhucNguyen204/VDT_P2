@@ -88,11 +88,17 @@ func (s *Server) setupRouter() {
 		v1.GET("/stats/alerts", s.getAlertStats)
 		v1.GET("/stats/process-trees", s.getProcessTreeStats)
 
-		// Sigma Rules
+		// Sigma Rules (Legacy endpoints)
 		v1.GET("/rules", s.getSigmaRules)
 		v1.GET("/rules/:id", s.getSigmaRule)
 		v1.POST("/rules/reload", s.reloadSigmaRules)
 	}
+
+	// Advanced Rule Management API - Dynamic SIGMA rule configuration
+	ruleAPI := NewRuleManagementAPI(s.processor, s.logger)
+	ruleAPI.RegisterRuleManagementRoutes(s.router)
+
+	s.logger.Info("🔧 Advanced Rule Management API registered")
 
 	// Serve static files for frontend
 	s.router.Static("/static", "./web/static")

@@ -1,0 +1,119 @@
+data_dir: "/var/lib/vector/data"
+
+sources:
+  syslog_tcp:
+    type: syslog
+    address: "0.0.0.0:5514"
+    mode: tcp
+
+  demo_logs:
+    type: demo_logs
+    format: json
+    interval: 30.0
+
+transforms:
+  ssh_failed_login_processor:
+    type: remap
+    inputs:
+      - syslog_tcp
+    drop_on_abort: true
+    drop_on_error: true
+    source: |
+      # Only process sshd logs
+      if .appname != "sshd" {
+        abort
+      }
+      
+      # Get message
+      message = to_string(.message) ?? ""
+      
+      # Parse SSH failed login using proper VRL syntax (matching Vector docs)
+      fail, err_fail = parse_regex(message, r'Failed password for (?:invalid user )?(?P<user>[^ ]+) from (?P<src_ip>\d{1,3}(?:\.\d{1,3}){3}) port (?P<src_port>\d+) ssh2')
+      
+      if err_fail != null {
+        abort
+      }
+      
+      # Create EDR event 
+      .agent_id = "edr-agent-001"
+      .event_type = "authentication_failure"
+      .event_category = "authentication"
+      .severity = 7
+      .threat_level = "high"
+      .timestamp = now()
+      
+      # Process info
+      .process_name = "sshd"
+      .process_path = "/usr/sbin/sshd"
+      .command_line = "sshd: " + to_string(fail.user) + " [priv]"
+      
+      # User info using proper VRL dot notation  
+      .user_name = to_string(fail.user)
+      .source_ip = to_string(fail.src_ip)
+      .source_port = to_int(fail.src_port) ?? 0
+      
+      # Authentication details
+      .auth_method = "ssh"
+      .auth_result = "failed"
+      .failure_reason = "invalid_password"
+      
+      # MITRE ATT&CK mapping
+      .mitre_techniques = ["T1110.001"]  # Brute Force: Password Guessing
+      .mitre_tactics = ["TA0006"]        # Credential Access
+
+  agent_heartbeat:
+    type: remap
+    inputs:
+      - demo_logs
+    source: |
+      . = {
+        "agent_id": "edr-agent-001",
+        "hostname": get_hostname() ?? "edr-agent-001",
+        "ip_address": "192.168.1.100", 
+        "os": "linux",
+        "os_version": "Ubuntu 22.04",
+        "agent_version": "1.0.0",
+        "status": "active",
+        "last_seen": now()
+      }
+
+sinks:
+  console_output:
+    type: console
+    inputs:
+      - ssh_failed_login_processor
+      - agent_heartbeat
+    encoding:
+      codec: json
+
+  edr_server:
+    type: http
+    inputs:
+      - ssh_failed_login_processor
+    uri: "http://edr-server:8080/api/v1/events"
+    method: post
+    encoding:
+      codec: json
+    headers:
+      Content-Type: "application/json"
+    batch:
+      max_events: 10
+      timeout_secs: 5
+
+  agent_registration:
+    type: http
+    inputs:
+      - agent_heartbeat
+    uri: "http://edr-server:8080/api/v1/agents/register"
+    method: post
+    encoding:
+      codec: json
+    headers:
+      Content-Type: "application/json"
+    batch:
+      max_events: 1
+      timeout_secs: 60
+
+api:
+  enabled: true
+  address: "0.0.0.0:8686"
