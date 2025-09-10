@@ -32,6 +32,11 @@ type Processor struct {
 	workerPool  chan *models.Event
 	workerCount int
 	stopChan    chan bool
+
+	// Rule loading status
+	rulesLoaded   bool
+	rulesMutex    sync.RWMutex
+	rulesLoadChan chan bool
 }
 
 // VectorEvent đại diện cho event từ Vector.dev
@@ -80,20 +85,105 @@ func New(db *gorm.DB, logger *logrus.Logger) (*Processor, error) {
 
 	// Create processor instance first
 	processor := &Processor{
-		sigmaEngine:  sigmaEngine,
-		repository:   database.NewRepository(db),
-		logger:       logger,
-		processTrees: make(map[string]*models.ProcessTree),
-		workerPool:   make(chan *models.Event, 1000),
-		workerCount:  4,
-		stopChan:     make(chan bool),
+		sigmaEngine:   sigmaEngine,
+		repository:    database.NewRepository(db),
+		logger:        logger,
+		processTrees:  make(map[string]*models.ProcessTree),
+		workerPool:    make(chan *models.Event, 1000),
+		workerCount:   4,
+		stopChan:      make(chan bool),
+		rulesLoaded:   false,
+		rulesLoadChan: make(chan bool, 1),
 	}
 
-	// Load rules asynchronously to avoid blocking startup
-	go processor.loadRulesAsync()
+	// Load rules synchronously to ensure they're loaded before server starts
+	logger.Info("🔄 Loading SIGMA rules...")
+	err := processor.loadRulesSync()
+	if err != nil {
+		logger.WithError(err).Warn("⚠️ Failed to load some rules, continuing with available rules")
+	}
 
-	logger.Info("EDR Processor initialized")
+	logger.Info("✅ EDR Processor initialized with rules loaded")
 	return processor, nil
+}
+
+// loadRulesSync loads SIGMA rules synchronously and updates the loading status
+func (p *Processor) loadRulesSync() error {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.WithField("panic", r).Error("Rule loading panic recovered")
+		}
+		// Always mark as loaded even if there were errors
+		p.rulesMutex.Lock()
+		p.rulesLoaded = true
+		p.rulesMutex.Unlock()
+
+		// Signal that rules are loaded
+		select {
+		case p.rulesLoadChan <- true:
+		default:
+		}
+	}()
+
+	ruleConfig := GetDefaultRuleConfig()
+	rules, err := LoadCategorizedRules("rules/", ruleConfig, p.logger)
+	if err != nil {
+		// Fallback to simple loading
+		rules, err = loadSigmaRules("rules/")
+		if err != nil {
+			p.logger.WithError(err).Warn("Failed to load SIGMA rules, using minimal ruleset")
+			rules = getMinimalCustomRules() // Use minimal custom rules
+		}
+	}
+
+	// Filter and validate rules before compilation
+	validRules := []string{}
+	for _, rule := range rules {
+		// Basic validation - skip empty or malformed rules
+		if len(strings.TrimSpace(rule)) < 50 || !strings.Contains(rule, "detection:") {
+			continue
+		}
+		validRules = append(validRules, rule)
+	}
+
+	p.logger.WithField("rules_loaded", len(validRules)).Info("📋 SIGMA rules loaded")
+
+	// Use progressive compilation to handle large rulesets
+	newEngine := sigma.NewSigmaEngine(nil, p.logger) // Create with proper logger
+
+	// Try to compile in batches
+	successfulRules := attemptProgressiveCompilation(newEngine, validRules, p.logger)
+
+	if len(successfulRules) > 0 {
+		// Replace the engine with new one containing all rules
+		finalEngine := sigma.NewSigmaEngine(nil, p.logger) // Create with proper logger
+		err := finalEngine.FromRules(successfulRules)
+		if err != nil {
+			p.logger.WithError(err).Error("Failed to create final engine")
+			return err
+		}
+
+		// Setup field mappings for common log sources
+		finalEngine.AddFieldMapping("ProcessImage", "Image")
+		finalEngine.AddFieldMapping("ProcessCommandLine", "CommandLine")
+		finalEngine.AddFieldMapping("ParentProcessImage", "ParentImage")
+		finalEngine.AddFieldMapping("ParentProcessCommandLine", "ParentCommandLine")
+		finalEngine.AddFieldMapping("TargetFilename", "file_path")
+		finalEngine.AddFieldMapping("DestinationIp", "dst_ip")
+		finalEngine.AddFieldMapping("SourceIp", "src_ip")
+		finalEngine.AddFieldMapping("DestinationPort", "dst_port")
+		finalEngine.AddFieldMapping("SourcePort", "src_port")
+
+		// Atomically replace the engine
+		p.sigmaEngine = finalEngine
+
+		p.logger.WithField("rules_compiled", len(successfulRules)).Info("✅ SIGMA Engine updated successfully")
+	} else {
+		p.logger.Warn("⚠️ No rules compiled successfully")
+		return fmt.Errorf("no rules compiled successfully")
+	}
+
+	return nil
 }
 
 // loadRulesAsync loads SIGMA rules asynchronously to avoid blocking startup
@@ -301,6 +391,27 @@ func loadSigmaRules(rulesDir string) ([]string, error) {
 	}
 
 	return rules, nil
+}
+
+// AreRulesLoaded returns true if SIGMA rules have been loaded
+func (p *Processor) AreRulesLoaded() bool {
+	p.rulesMutex.RLock()
+	defer p.rulesMutex.RUnlock()
+	return p.rulesLoaded
+}
+
+// WaitForRules waits for SIGMA rules to be loaded with timeout
+func (p *Processor) WaitForRules(timeout time.Duration) bool {
+	if p.AreRulesLoaded() {
+		return true
+	}
+
+	select {
+	case <-p.rulesLoadChan:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // Start khởi động processor workers

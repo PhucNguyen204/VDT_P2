@@ -30,6 +30,7 @@ type EngineConfig struct {
 	EnableParallelProcessing bool          `json:"enable_parallel_processing"`
 	EnablePrefilter          bool          `json:"enable_prefilter"`
 	EnableSharedComputation  bool          `json:"enable_shared_computation"`
+	EnableDebugLogging       bool          `json:"enable_debug_logging"`
 	BatchSize                int           `json:"batch_size"`
 	WorkerCount              int           `json:"worker_count"`
 	PrefilterMinLength       int           `json:"prefilter_min_length"`
@@ -44,6 +45,7 @@ func DefaultEngineConfig() *EngineConfig {
 		EnableParallelProcessing: true,
 		EnablePrefilter:          true,
 		EnableSharedComputation:  true,
+		EnableDebugLogging:       false, // Tắt debug logging mặc định
 		BatchSize:                1000,
 		WorkerCount:              4,
 		PrefilterMinLength:       3,

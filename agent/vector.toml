@@ -1,6 +1,10 @@
 # ---- General ----
 data_dir = "/var/lib/vector/data"
 
+# Giảm log level để tắt DEBUG messages
+[log]
+level = "warn"
+
 # ---- Sources ----
 [sources.http_logs]
 type = "http"
@@ -10,7 +14,7 @@ path = "/logs"
 [sources.demo_logs]
 type = "demo_logs"
 format = "json"
-interval = 30.0
+interval = 300.0  # Tăng từ 30s lên 5 phút để giảm log spam
 
 [sources.syslog_tcp]
 type = "syslog"
@@ -137,17 +141,7 @@ method = "post"
 encoding.codec = "json"
 headers.Content-Type = "application/json"
 
-# Agent Registration & Heartbeat
-[sinks.agent_registration]
-type = "http"
-inputs = ["demo_logs"]
-uri = "http://edr-server:8080/api/v1/agents/register"
-method = "post"
-encoding.codec = "json"
-headers.Content-Type = "application/json"
-batch.max_events = 1
-batch.timeout_secs = 60
-
+# Agent Registration & Heartbeat - Chỉ chạy heartbeat, không registration liên tục
 [transforms.agent_heartbeat]
 type = "remap"
 inputs = ["demo_logs"]
@@ -157,7 +151,8 @@ source = '''
   "hostname": get_hostname!(),
   "ip_address": "192.168.1.100",
   "os": "linux",
-  "version": "1.0.0",
+  "agent_version": "1.0.0",  # Fix: sử dụng agent_version thay vì version
+  "os_version": "Ubuntu 22.04",  # Thêm os_version
   "status": "active",
   "last_seen": now()
 }
@@ -171,7 +166,7 @@ method = "post"
 encoding.codec = "json"
 headers.Content-Type = "application/json"
 batch.max_events = 1
-batch.timeout_secs = 30
+batch.timeout_secs = 300  # Tăng từ 30s lên 5 phút
 
 # ---- API ----
 [api]

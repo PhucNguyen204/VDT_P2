@@ -414,7 +414,7 @@ func (c *Compiler) compilePrimitive(field string, value interface{}) (*Primitive
 		if primitiveType == PrimitiveContains || primitiveType == PrimitiveEquals ||
 			primitiveType == PrimitiveEndsWith || primitiveType == PrimitiveStartsWith {
 			primitive.Literals = append(primitive.Literals, v)
-			fmt.Printf("🔍 Literal extracted: '%s' from field '%s' type '%s'\n", v, mappedField, primitiveType)
+			// fmt.Printf("🔍 Literal extracted: '%s' from field '%s' type '%s'\n", v, mappedField, primitiveType) // Debug disabled
 		}
 
 		// Compile regex if needed

@@ -122,17 +122,40 @@ func (s *Server) corsMiddleware() gin.HandlerFunc {
 	}
 }
 
-// healthCheck endpoint kiểm tra health của server
+// healthCheck endpoint kiểm tra health của server và status load rules
 func (s *Server) healthCheck(c *gin.Context) {
+	rulesLoaded := s.processor.AreRulesLoaded()
+	status := "healthy"
+
+	if !rulesLoaded {
+		status = "loading"
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
-		"timestamp": time.Now().Unix(),
-		"version":   "1.0.0",
+		"status":       status,
+		"rules_loaded": rulesLoaded,
+		"timestamp":    time.Now().Unix(),
+		"version":      "1.0.0",
+		"message": map[string]string{
+			"healthy": "✅ Server is healthy and rules are loaded",
+			"loading": "🔄 Server is healthy but still loading SIGMA rules",
+		}[status],
 	})
 }
 
-// receiveEvents nhận events từ Vector.dev
+// receiveEvents nhận events từ Vector.dev - chỉ sau khi rules đã được load
 func (s *Server) receiveEvents(c *gin.Context) {
+	// Check if SIGMA rules are loaded before processing events
+	if !s.processor.AreRulesLoaded() {
+		s.logger.Warn("🚫 Rules not loaded yet, rejecting events")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "SIGMA rules not loaded yet",
+			"message": "Server is still loading detection rules, please try again in a moment",
+			"status":  "rules_loading",
+		})
+		return
+	}
+
 	var events []processor.VectorEvent
 
 	if err := c.ShouldBindJSON(&events); err != nil {
@@ -141,7 +164,7 @@ func (s *Server) receiveEvents(c *gin.Context) {
 		return
 	}
 
-	s.logger.WithField("count", len(events)).Info("Nhận events từ Vector")
+	s.logger.WithField("count", len(events)).Info("📨 Nhận events từ Vector (rules loaded)")
 
 	// Process từng event
 	processedCount := 0
@@ -158,6 +181,7 @@ func (s *Server) receiveEvents(c *gin.Context) {
 		"message":   "Events processed successfully",
 		"total":     len(events),
 		"processed": processedCount,
+		"status":    "rules_loaded",
 	})
 }
 
@@ -430,12 +454,14 @@ func (s *Server) getRecentAlerts() []interface{} {
 // registerAgent đăng ký agent mới
 func (s *Server) registerAgent(c *gin.Context) {
 	var req struct {
-		AgentID   string    `json:"agent_id" binding:"required"`
-		Hostname  string    `json:"hostname" binding:"required"`
-		IPAddress string    `json:"ip_address"`
-		OS        string    `json:"os"`
-		Version   string    `json:"version"`
-		LastSeen  time.Time `json:"last_seen"`
+		AgentID      string    `json:"agent_id" binding:"required"`
+		Hostname     string    `json:"hostname" binding:"required"`
+		IPAddress    string    `json:"ip_address"`
+		OS           string    `json:"os"`
+		OSVersion    string    `json:"os_version"`
+		AgentVersion string    `json:"agent_version"`
+		Status       string    `json:"status"`
+		LastSeen     time.Time `json:"last_seen"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -450,7 +476,8 @@ func (s *Server) registerAgent(c *gin.Context) {
 		Hostname:     req.Hostname,
 		IPAddress:    req.IPAddress,
 		OS:           req.OS,
-		AgentVersion: req.Version,
+		OSVersion:    req.OSVersion,
+		AgentVersion: req.AgentVersion,
 		Status:       "active",
 		LastSeen:     time.Now(),
 	})

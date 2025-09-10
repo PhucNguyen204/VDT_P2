@@ -1,15 +1,20 @@
 data_dir: "/var/lib/vector/data"
 
+# Reduce log verbosity
+log_schema:
+  timestamp_key: "timestamp"
+
 sources:
   syslog_tcp:
     type: syslog
     address: "0.0.0.0:5514"
     mode: tcp
 
-  demo_logs:
-    type: demo_logs
-    format: json
-    interval: 30.0
+  # Commented out demo logs to reduce noise during testing
+  # demo_logs:
+  #   type: demo_logs
+  #   format: json
+  #   interval: 30.0
 
 transforms:
   ssh_failed_login_processor:
@@ -61,28 +66,29 @@ transforms:
       .mitre_techniques = ["T1110.001"]  # Brute Force: Password Guessing
       .mitre_tactics = ["TA0006"]        # Credential Access
 
-  agent_heartbeat:
-    type: remap
-    inputs:
-      - demo_logs
-    source: |
-      . = {
-        "agent_id": "edr-agent-001",
-        "hostname": get_hostname() ?? "edr-agent-001",
-        "ip_address": "192.168.1.100", 
-        "os": "linux",
-        "os_version": "Ubuntu 22.04",
-        "agent_version": "1.0.0",
-        "status": "active",
-        "last_seen": now()
-      }
+  # Commented out agent heartbeat to avoid continuous registration
+  # agent_heartbeat:
+  #   type: remap
+  #   inputs:
+  #     - demo_logs
+  #   source: |
+  #     . = {
+  #       "agent_id": "edr-agent-001",
+  #       "hostname": get_hostname() ?? "edr-agent-001",
+  #       "ip_address": "192.168.1.100", 
+  #       "os": "linux",
+  #       "os_version": "Ubuntu 22.04",
+  #       "agent_version": "1.0.0",
+  #       "status": "active",
+  #       "last_seen": now()
+  #     }
 
 sinks:
   console_output:
     type: console
     inputs:
       - ssh_failed_login_processor
-      - agent_heartbeat
+      # - agent_heartbeat  # Commented out
     encoding:
       codec: json
 
@@ -100,19 +106,20 @@ sinks:
       max_events: 10
       timeout_secs: 5
 
-  agent_registration:
-    type: http
-    inputs:
-      - agent_heartbeat
-    uri: "http://edr-server:8080/api/v1/agents/register"
-    method: post
-    encoding:
-      codec: json
-    headers:
-      Content-Type: "application/json"
-    batch:
-      max_events: 1
-      timeout_secs: 60
+  # Commented out agent registration to avoid continuous registration
+  # agent_registration:
+  #   type: http
+  #   inputs:
+  #     - agent_heartbeat
+  #   uri: "http://edr-server:8080/api/v1/agents/register"
+  #   method: post
+  #   encoding:
+  #     codec: json
+  #   headers:
+  #     Content-Type: "application/json"
+  #   batch:
+  #     max_events: 1
+  #     timeout_secs: 60
 
 api:
   enabled: true

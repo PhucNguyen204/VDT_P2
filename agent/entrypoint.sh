@@ -21,7 +21,7 @@ mkdir -p /var/run/sshd
 mkdir -p /var/lib/vector/data
 mkdir -p /var/log/vector
 
-# Start Vector with debug logging
+# Start Vector with minimal logging
 if [ -f /etc/vector/vector.yaml ]; then
     echo "Starting Vector with YAML config..."
     echo "Vector config file exists at: /etc/vector/vector.yaml"
@@ -31,11 +31,11 @@ if [ -f /etc/vector/vector.yaml ]; then
         echo "Vector config validation failed, trying to start anyway..."
     }
     echo "Starting Vector..."
-    /usr/local/bin/vector --config-yaml /etc/vector/vector.yaml --verbose &
+    VECTOR_LOG=warn /usr/local/bin/vector --config-yaml /etc/vector/vector.yaml &
 elif [ -f /etc/vector/vector.toml ]; then
     echo "Starting Vector with TOML config..."
     echo "Vector config file exists at: /etc/vector/vector.toml"
-    /usr/local/bin/vector --config-toml /etc/vector/vector.toml --verbose &
+    VECTOR_LOG=warn /usr/local/bin/vector --config-toml /etc/vector/vector.toml &
 else
     echo "Vector config not found, skipping..."
 fi

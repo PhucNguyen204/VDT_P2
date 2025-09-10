@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+// debugf prints debug message if debug logging is enabled
+func (e *DAGEngine) debugf(format string, args ...interface{}) {
+	if e.config != nil && e.config.EnableDebugLogging {
+		fmt.Printf(format, args...)
+	}
+}
+
 // DAGEngine high-performance execution engine với shared computation
 type DAGEngine struct {
 	nodes          map[string]*DAGNode
@@ -189,7 +196,9 @@ func (e *DAGEngine) Execute(event map[string]interface{}) ([]*RuleMatch, int, in
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	fmt.Printf("🔍 DAG Execute: Starting execution with %d rules\n", len(e.rules))
+	if e.config.EnableDebugLogging {
+		fmt.Printf("🔍 DAG Execute: Starting execution with %d rules\n", len(e.rules))
+	}
 
 	ctx := &ExecutionContext{
 		Event:     event,
@@ -200,8 +209,8 @@ func (e *DAGEngine) Execute(event map[string]interface{}) ([]*RuleMatch, int, in
 	matches := make([]*RuleMatch, 0)
 
 	// Evaluate each rule
-	for i, rule := range e.rules {
-		fmt.Printf("🔍 Evaluating rule %d: %s (ID: %s)\n", i, rule.Title, rule.ID)
+	for _, rule := range e.rules {
+		// fmt.Printf("🔍 Evaluating rule %d: %s (ID: %s)\n", i, rule.Title, rule.ID) // Debug disabled
 		matched, err := e.evaluateRule(rule, ctx)
 		if err != nil {
 			return nil, ctx.NodesRan, ctx.SharedHits, fmt.Errorf("error evaluating rule %s: %w", rule.ID, err)
@@ -238,14 +247,14 @@ func (e *DAGEngine) Execute(event map[string]interface{}) ([]*RuleMatch, int, in
 
 // evaluateRule evaluate một rule với event
 func (e *DAGEngine) evaluateRule(rule *CompiledRule, ctx *ExecutionContext) (bool, error) {
-	fmt.Printf("🔍 EvaluateRule: %s, RootNode=%v\n", rule.Title, rule.RootNode != nil)
+	// fmt.Printf("🔍 EvaluateRule: %s, RootNode=%v\n", rule.Title, rule.RootNode != nil) // Debug disabled
 
 	if rule.RootNode == nil {
-		fmt.Printf("❌ Rule %s has no root node!\n", rule.Title)
+		// fmt.Printf("❌ Rule %s has no root node!\n", rule.Title) // Debug disabled
 		return false, nil
 	}
 
-	fmt.Printf("🔍 Root node type: %s\n", rule.RootNode.Type)
+	// fmt.Printf("🔍 Root node type: %s\n", rule.RootNode.Type) // Debug disabled
 	return e.evaluateNode(rule.RootNode, ctx)
 }
 
@@ -306,7 +315,9 @@ func (e *DAGEngine) evaluatePrimitive(primitive *Primitive, ctx *ExecutionContex
 		return false, nil
 	}
 
-	fmt.Printf("🔍 Evaluating Primitive: Field='%s', Type='%s', Value='%v'\n", primitive.Field, primitive.Type, primitive.Value)
+	if e.config.EnableDebugLogging {
+		fmt.Printf("🔍 Evaluating Primitive: Field='%s', Type='%s', Value='%v'\n", primitive.Field, primitive.Type, primitive.Value)
+	}
 
 	// Check shared computation
 	nodeKey := fmt.Sprintf("primitive_%s_%s_%v", primitive.Field, string(primitive.Type), primitive.Value)
@@ -317,7 +328,9 @@ func (e *DAGEngine) evaluatePrimitive(primitive *Primitive, ctx *ExecutionContex
 
 	// Get field value from event
 	fieldValue, exists := e.getFieldValue(ctx.Event, primitive.Field)
-	fmt.Printf("🔍 Field lookup: Field='%s', Value='%v', Exists=%v\n", primitive.Field, fieldValue, exists)
+	if e.config.EnableDebugLogging {
+		fmt.Printf("🔍 Field lookup: Field='%s', Value='%v', Exists=%v\n", primitive.Field, fieldValue, exists)
+	}
 
 	var result bool
 
@@ -340,7 +353,9 @@ func (e *DAGEngine) evaluatePrimitive(primitive *Primitive, ctx *ExecutionContex
 	case PrimitiveLess:
 		result = exists && e.compareLessThan(fieldValue, primitive.Value)
 	case PrimitiveIn:
-		fmt.Printf("🔍 PrimitiveIn: Values=%v, Value=%v\n", primitive.Values, primitive.Value)
+		if e.config.EnableDebugLogging {
+			fmt.Printf("🔍 PrimitiveIn: Values=%v, Value=%v\n", primitive.Values, primitive.Value)
+		}
 		if primitive.Values != nil && len(primitive.Values) > 0 {
 			result = exists && e.compareIn(fieldValue, primitive.Values)
 		} else {
