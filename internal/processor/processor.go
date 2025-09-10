@@ -75,92 +75,11 @@ type VectorEvent struct {
 
 // New tạo processor mới với SIGMA Engine
 func New(db *gorm.DB, logger *logrus.Logger) (*Processor, error) {
-	var sigmaEngine *sigma.SigmaEngine
+	// Initialize with empty engine first to avoid blocking startup
+	sigmaEngine := sigma.NewSigmaEngine(nil, logger)
 
-	// Enhanced: Use categorized loading for optimal performance with all 3,033 SIGMA rules
-	logger.Info("🚀 Loading ALL 3,033 SIGMA rules with categorized approach")
-	ruleConfig := GetDefaultRuleConfig()
-	rules, err := LoadCategorizedRules("rules/", ruleConfig, logger)
-	if err != nil {
-		logger.WithError(err).Warn("Categorized loading failed, falling back to simple loading")
-		// Fallback to simple loading
-		rules, err = loadSigmaRules("rules/")
-		if err != nil {
-			logger.WithError(err).Warn("Failed to load SIGMA rules, continuing with empty ruleset")
-			rules = []string{} // Empty ruleset
-		}
-	}
-
-	// Filter and validate rules before compilation
-	validRules := []string{}
-	for i, rule := range rules {
-		// Basic validation - skip empty or malformed rules
-		if len(strings.TrimSpace(rule)) < 50 || !strings.Contains(rule, "detection:") {
-			logger.WithField("rule_index", i).Debug("Skipping invalid rule")
-			continue
-		}
-		validRules = append(validRules, rule)
-	}
-
-	logger.WithFields(logrus.Fields{
-		"total_loaded": len(rules),
-		"valid_rules":  len(validRules),
-	}).Info("🔍 SIGMA rules loaded and filtered")
-
-	// Use cawalch/sigma-engine API: FromRules static constructor
-	sigmaEngine, err = sigma.FromRules(validRules)
-	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"total_rules": len(validRules),
-			"error":       err.Error(),
-		}).Warn("🔧 SIGMA engine compilation failed, trying progressive fallback")
-
-		// Simplified fallback - try with subset of rules
-		logger.WithField("total_rules", len(validRules)).Warn("Using simplified fallback compilation")
-
-		// Try with smaller subset first (first 100 rules)
-		subsetSize := 100
-		if len(validRules) < subsetSize {
-			subsetSize = len(validRules) / 2
-		}
-
-		if subsetSize > 0 {
-			subset := validRules[:subsetSize]
-			sigmaEngine, err = sigma.FromRules(subset)
-			if err == nil {
-				logger.WithFields(logrus.Fields{
-					"successful_rules": len(subset),
-					"total_rules":      len(validRules),
-				}).Info("✅ Fallback compilation with subset successful")
-			}
-		}
-
-		// Final fallback - create engine with no rules
-		if sigmaEngine == nil {
-			logger.Error("🚨 All compilation attempts failed, creating empty engine")
-			sigmaEngine, err = sigma.FromRules([]string{})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create even empty SIGMA engine: %w", err)
-			}
-		}
-	} else {
-		logger.WithField("compiled_rules", len(validRules)).Info("🎯 All SIGMA rules compiled successfully!")
-	}
-
-	// Setup field mappings for common log sources
-	sigmaEngine.AddFieldMapping("ProcessImage", "Image")
-	sigmaEngine.AddFieldMapping("ProcessCommandLine", "CommandLine")
-	sigmaEngine.AddFieldMapping("ParentProcessImage", "ParentImage")
-	sigmaEngine.AddFieldMapping("ParentProcessCommandLine", "ParentCommandLine")
-	sigmaEngine.AddFieldMapping("TargetFilename", "file_path")
-	sigmaEngine.AddFieldMapping("DestinationIp", "dst_ip")
-	sigmaEngine.AddFieldMapping("SourceIp", "src_ip")
-	sigmaEngine.AddFieldMapping("DestinationPort", "dst_port")
-	sigmaEngine.AddFieldMapping("SourcePort", "src_port")
-
-	logger.WithField("rules_loaded", len(rules)).Info("SIGMA Engine initialized successfully")
-
-	return &Processor{
+	// Create processor instance first
+	processor := &Processor{
 		sigmaEngine:  sigmaEngine,
 		repository:   database.NewRepository(db),
 		logger:       logger,
@@ -168,7 +87,79 @@ func New(db *gorm.DB, logger *logrus.Logger) (*Processor, error) {
 		workerPool:   make(chan *models.Event, 1000),
 		workerCount:  4,
 		stopChan:     make(chan bool),
-	}, nil
+	}
+
+	// Load rules asynchronously to avoid blocking startup
+	go processor.loadRulesAsync()
+
+	logger.Info("EDR Processor initialized")
+	return processor, nil
+}
+
+// loadRulesAsync loads SIGMA rules asynchronously to avoid blocking startup
+func (p *Processor) loadRulesAsync() {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.WithField("panic", r).Error("Rule loading panic recovered")
+		}
+	}()
+
+	ruleConfig := GetDefaultRuleConfig()
+	rules, err := LoadCategorizedRules("rules/", ruleConfig, p.logger)
+	if err != nil {
+		// Fallback to simple loading
+		rules, err = loadSigmaRules("rules/")
+		if err != nil {
+			p.logger.WithError(err).Warn("Failed to load SIGMA rules, using minimal ruleset")
+			rules = getMinimalCustomRules() // Use minimal custom rules
+		}
+	}
+
+	// Filter and validate rules before compilation
+	validRules := []string{}
+	for _, rule := range rules {
+		// Basic validation - skip empty or malformed rules
+		if len(strings.TrimSpace(rule)) < 50 || !strings.Contains(rule, "detection:") {
+			continue
+		}
+		validRules = append(validRules, rule)
+	}
+
+	p.logger.WithField("rules_loaded", len(validRules)).Info("SIGMA rules loaded")
+
+	// Use progressive compilation to handle large rulesets
+	newEngine := sigma.NewSigmaEngine(nil, p.logger) // Create with proper logger
+
+	// Try to compile in batches
+	successfulRules := attemptProgressiveCompilation(newEngine, validRules, p.logger)
+
+	if len(successfulRules) > 0 {
+		// Replace the engine with new one containing all rules
+		finalEngine := sigma.NewSigmaEngine(nil, p.logger) // Create with proper logger
+		err := finalEngine.FromRules(successfulRules)
+		if err != nil {
+			p.logger.WithError(err).Error("Failed to create final engine")
+			return
+		}
+
+		// Setup field mappings for common log sources
+		finalEngine.AddFieldMapping("ProcessImage", "Image")
+		finalEngine.AddFieldMapping("ProcessCommandLine", "CommandLine")
+		finalEngine.AddFieldMapping("ParentProcessImage", "ParentImage")
+		finalEngine.AddFieldMapping("ParentProcessCommandLine", "ParentCommandLine")
+		finalEngine.AddFieldMapping("TargetFilename", "file_path")
+		finalEngine.AddFieldMapping("DestinationIp", "dst_ip")
+		finalEngine.AddFieldMapping("SourceIp", "src_ip")
+		finalEngine.AddFieldMapping("DestinationPort", "dst_port")
+		finalEngine.AddFieldMapping("SourcePort", "src_port")
+
+		// Atomically replace the engine
+		p.sigmaEngine = finalEngine
+
+		p.logger.WithField("rules_compiled", len(successfulRules)).Info("SIGMA Engine updated successfully")
+	} else {
+		p.logger.Warn("No rules compiled successfully")
+	}
 }
 
 // loadSigmaRules load SIGMA rules từ directory
@@ -314,8 +305,6 @@ func loadSigmaRules(rulesDir string) ([]string, error) {
 
 // Start khởi động processor workers
 func (p *Processor) Start() {
-	p.logger.Info("Khởi động Event Processor workers")
-
 	for i := 0; i < p.workerCount; i++ {
 		go p.worker(i)
 	}
@@ -323,7 +312,6 @@ func (p *Processor) Start() {
 
 // Stop dừng processor workers
 func (p *Processor) Stop() {
-	p.logger.Info("Dừng Event Processor workers")
 	close(p.stopChan)
 }
 
@@ -332,28 +320,24 @@ func (p *Processor) ProcessVectorEvent(vectorEvent *VectorEvent) error {
 	// Convert VectorEvent thành models.Event
 	event, err := p.convertVectorEvent(vectorEvent)
 	if err != nil {
-		p.logger.WithError(err).Error("Không thể convert Vector event")
 		return err
 	}
 
 	// Ensure agent exists before saving event
 	err = p.ensureAgentExists(event.AgentID, vectorEvent)
 	if err != nil {
-		p.logger.WithError(err).Error("Không thể tạo agent")
 		return err
 	}
 
 	// Run SIGMA detection first
 	err = p.processSigmaDetection(event, vectorEvent)
 	if err != nil {
-		p.logger.WithError(err).Error("Lỗi khi chạy SIGMA detection")
 		// Continue anyway to save event
 	}
 
 	// Lưu event vào database
 	err = p.repository.CreateEvent(event)
 	if err != nil {
-		p.logger.WithError(err).Error("Không thể lưu event vào database")
 		return err
 	}
 
@@ -362,7 +346,7 @@ func (p *Processor) ProcessVectorEvent(vectorEvent *VectorEvent) error {
 	case p.workerPool <- event:
 		// Event đã được gửi tới worker
 	default:
-		p.logger.Warn("Worker pool đầy, bỏ qua event")
+		// Pool full, skip event
 	}
 
 	return nil
@@ -370,14 +354,11 @@ func (p *Processor) ProcessVectorEvent(vectorEvent *VectorEvent) error {
 
 // worker xử lý events từ worker pool
 func (p *Processor) worker(workerID int) {
-	p.logger.WithField("worker_id", workerID).Info("Worker started")
-
 	for {
 		select {
 		case event := <-p.workerPool:
 			p.processEvent(event, workerID)
 		case <-p.stopChan:
-			p.logger.WithField("worker_id", workerID).Info("Worker stopped")
 			return
 		}
 	}
@@ -385,14 +366,6 @@ func (p *Processor) worker(workerID int) {
 
 // processEvent xử lý một event với high-performance streaming engine
 func (p *Processor) processEvent(event *models.Event, workerID int) {
-	logger := p.logger.WithFields(logrus.Fields{
-		"worker_id": workerID,
-		"event_id":  event.ID,
-		"agent_id":  event.AgentID,
-	})
-
-	logger.Debug("Processing event with streaming engine")
-
 	// Update agent last seen
 	p.updateAgentLastSeen(event.AgentID)
 
@@ -405,17 +378,8 @@ func (p *Processor) processEvent(event *models.Event, workerID int) {
 	eventMap := p.convertEventToMap(event)
 	result, err := p.sigmaEngine.Evaluate(eventMap)
 	if err != nil {
-		logger.WithError(err).Error("Lỗi khi evaluate event với SIGMA Engine")
 		return
 	}
-
-	logger.WithFields(logrus.Fields{
-		"matched_rules":    len(result.MatchedRules),
-		"execution_time":   result.ExecutionTime,
-		"prefilter_passed": result.PrefilterPassed,
-		"processed_nodes":  result.ProcessedNodes,
-		"shared_hits":      result.SharedHits,
-	}).Debug("SIGMA evaluation completed")
 
 	// Convert matched rules thành alerts và lưu
 	for _, ruleMatch := range result.MatchedRules {
@@ -434,15 +398,13 @@ func (p *Processor) processEvent(event *models.Event, workerID int) {
 		}
 
 		err = p.repository.CreateAlert(alert)
-		if err != nil {
-			logger.WithError(err).Error("Không thể lưu SIGMA alert")
-		} else {
-			logger.WithFields(logrus.Fields{
-				"alert_id":   alert.ID,
-				"rule_title": alert.Title,
-				"severity":   alert.Severity,
-				"agent_id":   alert.AgentID,
-			}).Info("🚨 SIGMA Alert created")
+		if err == nil {
+			p.logger.WithFields(logrus.Fields{
+				"rule_id":   ruleMatch.RuleID,
+				"rule_name": ruleMatch.Title,
+				"severity":  alert.Severity,
+				"agent_id":  event.AgentID,
+			}).Info("🚨 ALERT")
 		}
 	}
 }
@@ -934,7 +896,7 @@ func (p *Processor) ensureAgentExists(agentID string, vectorEvent *VectorEvent) 
 		// Don't return error - continue processing events even if agent creation fails
 	}
 
-	p.logger.WithField("agent_id", agentID).Info("Auto-created new agent")
+	// p.logger.WithField("agent_id", agentID).Info("Auto-created new agent") // Tắt log tự động tạo agent
 	return nil
 }
 
@@ -998,15 +960,6 @@ func (p *Processor) processSigmaDetection(event *models.Event, vectorEvent *Vect
 		return fmt.Errorf("SIGMA evaluation failed: %w", err)
 	}
 
-	p.logger.WithFields(logrus.Fields{
-		"event_id":         event.ID,
-		"matches":          len(result.MatchedRules),
-		"prefilter_passed": result.PrefilterPassed,
-		"execution_time":   result.ExecutionTime,
-		"processed_nodes":  result.ProcessedNodes,
-		"shared_hits":      result.SharedHits,
-	}).Info("🔍 SIGMA detection completed")
-
 	// Create alerts for matched rules (realtime alerting)
 	for _, ruleMatch := range result.MatchedRules {
 		// Prepare arrays for PostgreSQL
@@ -1062,7 +1015,8 @@ func (p *Processor) sendRealtimeNotification(alert *models.Alert, ruleMatch *sig
 		"alert_id": alert.ID,
 		"severity": alert.Severity,
 		"title":    alert.Title,
-	}).Info("📢 Realtime notification sent")
+	})
+	// .Info("📢 Realtime notification sent") // Tắt log notification
 }
 
 // mapSigmaSeverityToString maps SIGMA severity to string theo cawalch standard
@@ -1098,8 +1052,6 @@ func attemptProgressiveCompilation(engine *sigma.SigmaEngine, rules []string, lo
 	batchSize := 50
 	successfulRules := []string{}
 
-	logger.WithField("batch_size", batchSize).Info("🔄 Attempting progressive compilation in batches")
-
 	for i := 0; i < len(rules); i += batchSize {
 		end := i + batchSize
 		if end > len(rules) {
@@ -1112,33 +1064,17 @@ func attemptProgressiveCompilation(engine *sigma.SigmaEngine, rules []string, lo
 		// Try current batch
 		err := testEngine.FromRules(batch)
 		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"batch_start": i,
-				"batch_size":  len(batch),
-				"error":       err.Error(),
-			}).Debug("❌ Batch compilation failed, trying individual rules")
-
 			// If batch fails, try individual rules
-			for j, rule := range batch {
+			for _, rule := range batch {
 				individualEngine := sigma.NewSigmaEngine(nil, logger)
 				err := individualEngine.FromRules([]string{rule})
 				if err == nil {
 					successfulRules = append(successfulRules, rule)
-					logger.WithField("rule_index", i+j).Debug("✅ Individual rule compiled")
-				} else {
-					logger.WithFields(logrus.Fields{
-						"rule_index": i + j,
-						"error":      err.Error(),
-					}).Debug("❌ Individual rule failed")
 				}
 			}
 		} else {
 			// Batch succeeded
 			successfulRules = append(successfulRules, batch...)
-			logger.WithFields(logrus.Fields{
-				"batch_start": i,
-				"batch_size":  len(batch),
-			}).Debug("✅ Batch compilation successful")
 		}
 	}
 
@@ -1146,10 +1082,6 @@ func attemptProgressiveCompilation(engine *sigma.SigmaEngine, rules []string, lo
 	if len(successfulRules) > 0 {
 		err := engine.FromRules(successfulRules)
 		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"successful_count": len(successfulRules),
-				"error":            err.Error(),
-			}).Warn("❌ Final compilation with successful rules failed")
 			return []string{} // Return empty to trigger minimal fallback
 		}
 	}

@@ -4,10 +4,10 @@ server:
   max_request_size: 10485760 # 10MB
 
 database:
-  host: 127.0.0.1
+  host: localhost
   port: 5432
-  username: test_user
-  password: test123
+  username: edr_user
+  password: edr_password
   database: edr_db
   ssl_mode: disable
 
@@ -20,7 +20,7 @@ redis:
 sigma:
   rules_path: "rules/"
   reload_interval: 300s # 5 minutes
-  max_rules: 1000
+  max_rules: -1  # Load all rules
 
 detection:
   process_tree_depth: 10

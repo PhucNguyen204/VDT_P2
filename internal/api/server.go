@@ -49,7 +49,7 @@ func (s *Server) setupRouter() {
 	}
 
 	s.router = gin.New()
-	s.router.Use(gin.Logger())
+	// s.router.Use(gin.Logger()) // Tắt HTTP request logging để giảm log
 	s.router.Use(gin.Recovery())
 	s.router.Use(s.corsMiddleware())
 
@@ -91,7 +91,7 @@ func (s *Server) setupRouter() {
 		// Sigma Rules (Legacy endpoints)
 		v1.GET("/rules", s.getSigmaRules)
 		v1.GET("/rules/:id", s.getSigmaRule)
-		v1.POST("/rules/reload", s.reloadSigmaRules)
+		// v1.POST("/rules/reload", s.reloadSigmaRules) // Moved to rule_management.go
 	}
 
 	// Advanced Rule Management API - Dynamic SIGMA rule configuration

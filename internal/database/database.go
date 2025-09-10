@@ -2,6 +2,8 @@ package database
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"time"
 
 	"edr-server/internal/config"
@@ -18,7 +20,12 @@ func InitDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Host, cfg.Username, cfg.Password, cfg.Database, cfg.Port, cfg.SSLMode)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.New(
+			log.New(io.Discard, "", log.LstdFlags), // Ghi log vào discard để không hiển thị
+			logger.Config{
+				LogLevel: logger.Silent,
+			},
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("không thể kết nối database: %w", err)

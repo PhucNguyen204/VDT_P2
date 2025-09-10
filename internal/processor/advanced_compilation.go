@@ -13,12 +13,6 @@ func advancedProgressiveCompilation(engine *sigma.SigmaEngine, rules []string, l
 	workerCount := determineOptimalWorkerCount(len(rules)) // Dynamic worker scaling
 	successfulRules := []string{}
 
-	logger.WithFields(logrus.Fields{
-		"batch_size":   batchSize,
-		"worker_count": workerCount,
-		"total_rules":  len(rules),
-	}).Info("🚀 Starting advanced async batch compilation")
-
 	// Phase 1: Parallel batch validation
 	validatedBatches := asyncBatchValidation(rules, batchSize, workerCount, logger)
 
@@ -27,10 +21,7 @@ func advancedProgressiveCompilation(engine *sigma.SigmaEngine, rules []string, l
 		successfulRules = append(successfulRules, batch...)
 	}
 
-	logger.WithFields(logrus.Fields{
-		"successful_rules": len(successfulRules),
-		"success_rate":     float64(len(successfulRules)) / float64(len(rules)) * 100,
-	}).Info("📊 Advanced batch validation completed")
+	logger.WithField("success_rate", float64(len(successfulRules))/float64(len(rules))*100).Info("Batch validation completed")
 
 	// Phase 3: Final compilation with all successful rules
 	if len(successfulRules) > 0 {
